@@ -28,5 +28,26 @@ go.work.sum
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Web
+web/node_modules/
+web/dist/
+
+# Go
+backend/tmp/
+
+# C++ SDK build
+sdk/cpp/build/
+
+# Docker
+mysql_data/
