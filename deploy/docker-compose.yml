@@ -1,0 +1,30 @@
+version: '3'
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mysql
+    environment:
+      - DB_DSN=root:root@tcp(mysql:3306)/flagforge?charset=utf8mb4&parseTime=True
+
+  web:
+    build: ./web
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  mysql:
+    image: mysql:8
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: flagforge
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  mysql_data:
