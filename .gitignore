@@ -45,6 +45,10 @@ web/dist/
 
 # Go
 backend/tmp/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
 
 # C++ SDK build
 sdk/cpp/build/
