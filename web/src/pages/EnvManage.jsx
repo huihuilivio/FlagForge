@@ -52,13 +52,20 @@ function EnvManage() {
       form.resetFields();
       setEditing(null);
       load();
-    } catch { /* validate */ }
+    } catch (e) {
+      if (e.errorFields) return;
+      message.error('保存失败: ' + e.message);
+    }
   };
 
   const handleDelete = async (id) => {
-    await deleteEnv(id);
-    message.success('环境已删除');
-    load();
+    try {
+      await deleteEnv(id);
+      message.success('环境已删除');
+      load();
+    } catch (e) {
+      message.error('删除失败: ' + e.message);
+    }
   };
 
   const openEdit = (record) => {

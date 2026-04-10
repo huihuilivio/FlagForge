@@ -78,13 +78,20 @@ function RuleDrawer({ open, feature, envId, onClose }) {
       }
       setModalOpen(false);
       onClose(); // 刷新上层
-    } catch { /* validate */ }
+    } catch (e) {
+      if (e.errorFields) return;
+      message.error('保存失败: ' + e.message);
+    }
   };
 
   const handleDelete = async (id) => {
-    await deleteRule(id);
-    message.success('规则已删除');
-    onClose();
+    try {
+      await deleteRule(id);
+      message.success('规则已删除');
+      onClose();
+    } catch (e) {
+      message.error('删除失败: ' + e.message);
+    }
   };
 
   const columns = [

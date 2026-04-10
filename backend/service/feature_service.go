@@ -508,8 +508,12 @@ func matchAttr(raw json.RawMessage, attrs map[string]string) bool {
 }
 
 func compareVersions(a, b string) int {
-	partsA := strings.Split(a, ".")
-	partsB := strings.Split(b, ".")
+	// 分离 pre-release 后缀（如 "2.0.0-alpha" → "2.0.0", "alpha"）
+	mainA, preA := splitPreRelease(a)
+	mainB, preB := splitPreRelease(b)
+
+	partsA := strings.Split(mainA, ".")
+	partsB := strings.Split(mainB, ".")
 	maxLen := len(partsA)
 	if len(partsB) > maxLen {
 		maxLen = len(partsB)
@@ -529,5 +533,24 @@ func compareVersions(a, b string) int {
 			return 1
 		}
 	}
-	return 0
+	// 主版本号相同时比较 pre-release：有 pre-release < 无 pre-release
+	if preA == "" && preB == "" {
+		return 0
+	}
+	if preA == "" {
+		return 1 // a 是正式版，b 是预发布 → a > b
+	}
+	if preB == "" {
+		return -1 // a 是预发布，b 是正式版 → a < b
+	}
+	return strings.Compare(preA, preB)
+}
+
+// splitPreRelease 分离版本号中的 pre-release 后缀
+// "2.0.0-alpha.1" → ("2.0.0", "alpha.1"), "1.0.0" → ("1.0.0", "")
+func splitPreRelease(v string) (string, string) {
+	if idx := strings.IndexByte(v, '-'); idx >= 0 {
+		return v[:idx], v[idx+1:]
+	}
+	return v, ""
 }

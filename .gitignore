@@ -53,5 +53,8 @@ backend/tmp/
 # C++ SDK build
 sdk/cpp/build/
 
+# SDK cache
+feature_cache.*
+
 # Docker
 mysql_data/

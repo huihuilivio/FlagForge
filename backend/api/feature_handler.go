@@ -24,6 +24,19 @@ func logAndAbort(c *gin.Context, status int, err error, msg string) {
 
 var svc = service.NewFeatureService()
 
+// parseQueryUint 解析查询参数中的 uint 值，返回 0 和 error 如果格式不合法
+func parseQueryUint(c *gin.Context, key string) (uint, error) {
+	v := c.Query(key)
+	if v == "" {
+		return 0, nil
+	}
+	n, err := strconv.ParseUint(v, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return uint(n), nil
+}
+
 // ---------- 客户端接口 ----------
 
 // GetFeatures 客户端获取 feature 开关状态
@@ -463,9 +476,21 @@ func SetOverride(c *gin.Context) {
 // DeleteOverride 用户删除自己的 feature 覆盖（回退到规则求值）
 // DELETE /api/v1/override?app_id=1&env_id=1&feature_id=1&user_id=alice
 func DeleteOverride(c *gin.Context) {
-	appID, _ := strconv.ParseUint(c.Query("app_id"), 10, 64)
-	envID, _ := strconv.ParseUint(c.Query("env_id"), 10, 64)
-	featureID, _ := strconv.ParseUint(c.Query("feature_id"), 10, 64)
+	appID, err := parseQueryUint(c, "app_id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid app_id"})
+		return
+	}
+	envID, err := parseQueryUint(c, "env_id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid env_id"})
+		return
+	}
+	featureID, err := parseQueryUint(c, "feature_id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid feature_id"})
+		return
+	}
 	userID := c.Query("user_id")
 	if appID == 0 || envID == 0 || featureID == 0 || userID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "app_id, env_id, feature_id and user_id are required"})
@@ -481,8 +506,16 @@ func DeleteOverride(c *gin.Context) {
 // ListOverrides 列出用户的所有 feature 覆盖
 // GET /api/v1/overrides?app_id=1&env_id=1&user_id=alice
 func ListOverrides(c *gin.Context) {
-	appID, _ := strconv.ParseUint(c.Query("app_id"), 10, 64)
-	envID, _ := strconv.ParseUint(c.Query("env_id"), 10, 64)
+	appID, err := parseQueryUint(c, "app_id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid app_id"})
+		return
+	}
+	envID, err := parseQueryUint(c, "env_id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid env_id"})
+		return
+	}
 	userID := c.Query("user_id")
 	if appID == 0 || envID == 0 || userID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "app_id, env_id and user_id are required"})
@@ -510,5 +543,26 @@ func validateConditionsJSON(raw string) error {
 	if trimmed[0] != '[' && trimmed[0] != '{' {
 		return errors.New("must be array or object")
 	}
+	// 校验嵌套深度
+	if jsonDepth([]byte(trimmed)) > 20 {
+		return errors.New("conditions nested too deep (max 20)")
+	}
 	return nil
+}
+
+// jsonDepth 计算 JSON 嵌套深度
+func jsonDepth(data []byte) int {
+	var maxD, cur int
+	for _, b := range data {
+		switch b {
+		case '{', '[':
+			cur++
+			if cur > maxD {
+				maxD = cur
+			}
+		case '}', ']':
+			cur--
+		}
+	}
+	return maxD
 }

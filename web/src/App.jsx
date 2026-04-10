@@ -15,6 +15,7 @@ import FeatureList from './pages/FeatureList';
 import RuleManage from './pages/RuleManage';
 import AuditLogPage from './pages/AuditLog';
 import FeatureQuery from './pages/FeatureQuery';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const { Header, Sider, Content } = Layout;
 
@@ -85,16 +86,18 @@ function AppLayout() {
           </Header>
 
           <Content style={{ margin: 16, padding: 20, background: '#fff', borderRadius: 8, overflow: 'auto' }}>
-            <Routes>
-              <Route path="/" element={<AppManage />} />
-              <Route path="/apps" element={<AppManage />} />
-              <Route path="/envs" element={<EnvManage />} />
-              <Route path="/features" element={<FeatureList />} />
-              <Route path="/rules" element={<RuleManage />} />
-              <Route path="/query" element={<FeatureQuery />} />
-              <Route path="/audit" element={<AuditLogPage />} />
-              <Route path="*" element={<AppManage />} />
-            </Routes>
+            <ErrorBoundary>
+              <Routes>
+                <Route path="/" element={<AppManage />} />
+                <Route path="/apps" element={<AppManage />} />
+                <Route path="/envs" element={<EnvManage />} />
+                <Route path="/features" element={<FeatureList />} />
+                <Route path="/rules" element={<RuleManage />} />
+                <Route path="/query" element={<FeatureQuery />} />
+                <Route path="/audit" element={<AuditLogPage />} />
+                <Route path="*" element={<AppManage />} />
+              </Routes>
+            </ErrorBoundary>
           </Content>
         </Layout>
       </Layout>

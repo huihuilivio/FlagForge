@@ -66,13 +66,20 @@ function AppManage() {
       form.resetFields();
       setEditing(null);
       load();
-    } catch { /* validate */ }
+    } catch (e) {
+      if (e.errorFields) return; // form validate
+      message.error('保存失败: ' + e.message);
+    }
   };
 
   const handleDelete = async (id) => {
-    await deleteApp(id);
-    message.success('应用已删除');
-    load();
+    try {
+      await deleteApp(id);
+      message.success('应用已删除');
+      load();
+    } catch (e) {
+      message.error('删除失败: ' + e.message);
+    }
   };
 
   const openEdit = (record) => {

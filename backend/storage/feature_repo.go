@@ -229,27 +229,12 @@ func (r *FeatureRepo) FindOverridesByUser(appID, envID uint, userID string) ([]m
 }
 
 func (r *FeatureRepo) UpsertOverride(o *model.UserFeatureOverride) error {
-	var existing model.UserFeatureOverride
+	// 原子 upsert：冲突时更新 enabled 和 value
 	err := DB.Where("app_id = ? AND env_id = ? AND feature_id = ? AND user_id = ?",
-		o.AppID, o.EnvID, o.FeatureID, o.UserID).First(&existing).Error
-	if err == nil {
-		existing.Enabled = o.Enabled
-		existing.Value = o.Value
-		*o = existing
-		return DB.Save(&existing).Error
-	}
-	if err := DB.Create(o).Error; err != nil {
-		// 并发冲突：重试一次 upsert
-		if errR := DB.Where("app_id = ? AND env_id = ? AND feature_id = ? AND user_id = ?",
-			o.AppID, o.EnvID, o.FeatureID, o.UserID).First(&existing).Error; errR == nil {
-			existing.Enabled = o.Enabled
-			existing.Value = o.Value
-			*o = existing
-			return DB.Save(&existing).Error
-		}
-		return err
-	}
-	return nil
+		o.AppID, o.EnvID, o.FeatureID, o.UserID).
+		Assign(model.UserFeatureOverride{Enabled: o.Enabled, Value: o.Value}).
+		FirstOrCreate(o).Error
+	return err
 }
 
 func (r *FeatureRepo) DeleteOverride(appID, envID, featureID uint, userID string) error {

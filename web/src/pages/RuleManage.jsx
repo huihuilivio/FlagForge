@@ -95,13 +95,20 @@ function RuleManage() {
       form.resetFields();
       setEditing(null);
       load();
-    } catch { /* validate */ }
+    } catch (e) {
+      if (e.errorFields) return;
+      message.error('保存失败: ' + e.message);
+    }
   };
 
   const handleDelete = async (id) => {
-    await deleteRule(id);
-    message.success('规则已删除');
-    load();
+    try {
+      await deleteRule(id);
+      message.success('规则已删除');
+      load();
+    } catch (e) {
+      message.error('删除失败: ' + e.message);
+    }
   };
 
   const openEdit = (record) => {

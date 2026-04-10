@@ -1,6 +1,16 @@
 import axios from 'axios';
 
-const api = axios.create({ baseURL: '' });
+const api = axios.create({ baseURL: '', timeout: 15000 });
+
+// 统一错误响应拦截
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const msg = error.response?.data?.error || error.message || '请求失败';
+    // 让调用方 catch 时能拿到友好消息
+    return Promise.reject(new Error(msg));
+  }
+);
 
 // ---- App ----
 export const getApps = () => api.get('/admin/apps');

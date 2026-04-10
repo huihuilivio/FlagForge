@@ -159,7 +159,7 @@ private:
                 cache_file = config_.cache_file;
             }
 
-            saveCacheUnlocked(cache_file);
+            saveCacheToFile(cache_file);
             if (cb) cb();
             return true;
         } catch (const std::exception& e) {
@@ -180,7 +180,7 @@ private:
         return result;
     }
 
-    void saveCacheUnlocked(const std::string& cache_file) const {
+    void saveCacheToFile(const std::string& cache_file) const {
         if (cache_file.empty()) return;
         try {
             json j = json::object();

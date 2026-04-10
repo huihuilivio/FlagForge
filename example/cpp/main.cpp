@@ -13,7 +13,7 @@ int main() {
     config.env_key = "dev";
     config.poll_interval_sec = 30;       // auto-refresh every 30s
     config.timeout_sec = 5;
-    config.cache_file = "feature_cache.json";  // offline resilience
+    config.cache_file = "feature_cache.dat";  // offline resilience
 
     // --- 2. Set user context (for targeting rules) ---
     flagforge::UserContext ctx;
