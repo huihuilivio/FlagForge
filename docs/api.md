@@ -321,6 +321,91 @@ GET /api/v1/features?app_key=my_game&env_key=prod&user_id=alice&version=2.1.0&pl
 
 ---
 
+### User Feature Override（用户级覆盖）
+
+用户自行设置的 feature 覆盖，优先级高于所有定向规则。
+
+#### PUT /api/v1/override
+
+创建或更新用户级覆盖。
+
+**请求体**
+
+```json
+{
+  "app_id": 1,
+  "env_id": 1,
+  "feature_id": 1,
+  "user_id": "alice",
+  "enabled": true,
+  "value": ""
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `app_id` | uint | ✅ | 应用 ID |
+| `env_id` | uint | ✅ | 环境 ID |
+| `feature_id` | uint | ✅ | Feature ID |
+| `user_id` | string | ✅ | 用户 ID |
+| `enabled` | bool | | 开关值 |
+| `value` | string | | 自定义值 |
+
+**响应 200** — 返回完整的 override 对象（含 `id`）
+
+**响应 400** — 缺少必填参数
+
+#### DELETE /api/v1/override
+
+删除用户级覆盖（回退到规则求值）。
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `app_id` | uint | ✅ | 应用 ID |
+| `env_id` | uint | ✅ | 环境 ID |
+| `feature_id` | uint | ✅ | Feature ID |
+| `user_id` | string | ✅ | 用户 ID |
+
+**响应 200**
+
+```json
+{ "message": "override deleted" }
+```
+
+#### GET /api/v1/overrides
+
+列出用户在指定应用/环境下的所有覆盖。
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `app_id` | uint | ✅ | 应用 ID |
+| `env_id` | uint | ✅ | 环境 ID |
+| `user_id` | string | ✅ | 用户 ID |
+
+**响应 200**
+
+```json
+[
+  {
+    "id": 1,
+    "app_id": 1,
+    "env_id": 1,
+    "feature_id": 1,
+    "user_id": "alice",
+    "enabled": true,
+    "value": "",
+    "created_at": "2026-04-10T10:00:00Z",
+    "updated_at": "2026-04-10T10:00:00Z"
+  }
+]
+```
+
+---
+
 ## Conditions DSL
 
 `conditions` 字段是 JSON 字符串，支持三种格式：
@@ -375,11 +460,12 @@ GET /api/v1/features?app_key=my_game&env_key=prod&user_id=alice&version=2.1.0&pl
 
 ### 求值逻辑
 
-1. 按 `priority ASC, id ASC` 顺序逐条规则匹配
-2. 首条命中的规则终止求值，返回该规则的 `enabled` 和 `value`
-3. 无规则命中 → `enabled: false`
-4. `active = false` 的规则跳过
-5. 仅加载指定 `env_id` 的规则
+1. **用户覆盖优先**：若该用户有 `user_feature_overrides` 记录，直接返回覆盖值
+2. 按 `priority ASC, id ASC` 顺序逐条规则匹配
+3. 首条命中的规则终止求值，返回该规则的 `enabled` 和 `value`
+4. 无规则命中 → `enabled: false`
+5. `active = false` 的规则跳过
+6. 仅加载指定 `env_id` 的规则
 
 ---
 

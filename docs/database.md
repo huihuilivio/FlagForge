@@ -6,6 +6,7 @@
 apps 1──N environments
 apps 1──N features
 features 1──N feature_targeting_rules ──N→1 environments
+apps + environments + features + users ──→ user_feature_overrides
 audit_logs ──→ apps (nullable)
 audit_logs ──→ features (nullable)
 audit_logs ──→ environments (nullable)
@@ -47,8 +48,6 @@ per-app 级别，每个应用独立定义自己的环境集。
 
 **唯一约束**: `UNIQUE(app_id, env_key)`
 
-扩展新环境只需插入一行，FK 保证其他表不会引用非法环境。
-
 ---
 
 ### features — 功能开关主表
@@ -77,7 +76,7 @@ per-app 级别，每个应用独立定义自己的环境集。
 
 ### feature_targeting_rules — 定向规则表
 
-统一承载所有规则逻辑：基线、白名单、用户覆盖、灰度、版本定向。
+统一承载所有规则逻辑：基线、白名单、灰度、版本定向、平台定向、属性匹配。
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
@@ -87,23 +86,35 @@ per-app 级别，每个应用独立定义自己的环境集。
 | name | varchar(100) | | 规则名称，如 "VIP用户强制开启" |
 | priority | int | NOT NULL, DEFAULT 0 | 数值越小优先级越高 |
 | active | bool | NOT NULL, DEFAULT true | 规则开关，false=跳过不参与求值 |
-| match_type | varchar(30) | NOT NULL | 匹配类型 |
-| match_value | text | | 匹配参数（JSON 格式） |
+| conditions | text | NOT NULL, DEFAULT '[]' | 条件树 JSON（Conditions DSL，支持 AND/OR 嵌套） |
 | enabled | bool | DEFAULT false | 命中后返回的开关值 |
-| value | varchar(500) | | 命中后返回的值（string/json 类型使用） |
+| value | text | | 命中后返回的值（string/json 类型使用） |
 | created_at | datetime | NOT NULL | |
 | updated_at | datetime | NOT NULL | |
 
-**唯一约束**: `UNIQUE(feature_id, env_id, priority)` — 同一 feature 同一环境下优先级不可重复。
+**索引**: `INDEX idx_targeting_fe(feature_id, env_id, priority)` — 非唯一索引，允许同优先级（便于插入/排序）。
 
-#### match_type 取值
+**注意**: `conditions` 是 JSON 字符串，不可索引查询。DB 层仅按 `env_id + active` 过滤，条件匹配在应用层内存中完成。
 
-| match_type | match_value 格式 | 匹配逻辑 |
-|-----------|-----------------|---------|
+#### conditions 格式
+
+支持三种格式（详见 [API 文档 — Conditions DSL](api.md#conditions-dsl)）：
+
+| 格式 | 含义 | 示例 |
+|------|------|------|
+| `[]` 或空 | match all（基线规则） | `[]` |
+| 裸数组 | 隐式 AND | `[{"type":"user_list","value":["alice"]}]` |
+| 条件树 | 显式 AND/OR 嵌套 | `{"op":"and","items":[...]}` |
+
+#### 支持的条件类型
+
+| type | value 格式 | 匹配逻辑 |
+|------|-----------|---------|
 | `user_list` | `["alice","bob"]` | user_id 在列表中 |
-| `percentage` | `30` | `hash(user_id) % 100 < 30` |
-| `version` | `">=2.0.0"` | 客户端版本满足条件 |
-| `all` | `null` | 无条件命中（基线规则） |
+| `percentage` | `30` 或 `{"pct":30,"key":"exp_abc"}` | `fnv32a(featureKey + \0 + userID) % 100 < pct` |
+| `version` | `">=2.0.0"` | 客户端版本满足条件（支持 `>` `>=` `<` `<=` `=`） |
+| `platform` | `"ios"` | 平台精确匹配（不区分大小写） |
+| `attr` | `{"key":"region","value":"cn"}` | 扩展属性匹配（不区分大小写） |
 
 #### 字段区分
 
@@ -111,6 +122,26 @@ per-app 级别，每个应用独立定义自己的环境集。
 |------|------|
 | `active` | 规则本身是否参与求值（规则开关，可快速关闭不删数据） |
 | `enabled` | 命中后返回给客户端的 feature 开关值 |
+
+---
+
+### user_feature_overrides — 用户级覆盖表
+
+用户可自行设置 feature 开关，优先级高于所有定向规则。
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | uint | PK, AUTO_INCREMENT | |
+| app_id | uint | FK → apps(id), NOT NULL | 所属应用 |
+| env_id | uint | FK → environments(id), NOT NULL | 所属环境 |
+| feature_id | uint | FK → features(id), NOT NULL | 所属 feature |
+| user_id | varchar(100) | NOT NULL | 用户标识 |
+| enabled | bool | NOT NULL, DEFAULT false | 开关值 |
+| value | text | | 自定义值 |
+| created_at | datetime | NOT NULL | |
+| updated_at | datetime | NOT NULL | |
+
+**唯一约束**: `UNIQUE(app_id, env_id, feature_id, user_id)` — 同一用户在同一应用/环境/feature 下只能有一条覆盖。
 
 ---
 
@@ -139,26 +170,33 @@ nullable 设计：被删除的 app/feature/env 不会导致审计记录丢失，
 
 ```
 客户端请求:
-  GET /api/v1/features?app=my_game&user_id=alice&env=prod&version=1.2.0
+  GET /api/v1/features?app_key=my_game&env_key=prod&user_id=alice&version=2.0.0&platform=ios
 
 服务端求值:
   1. 通过 app_key 查到 app_id
   2. 通过 env_key 查到 env_id
-  3. 查询该 app 下所有 features
-  4. 对每个 feature:
+  3. 查询该 app 下所有 features（预加载指定 env 的 active rules）
+  4. 加载用户级覆盖 (user_feature_overrides)
+  5. 对每个 feature:
 
+     // Step 1: 检查用户覆盖（优先级最高）
+     SELECT * FROM user_feature_overrides
+     WHERE app_id=? AND env_id=? AND feature_id=? AND user_id=?
+     → 命中则直接返回 {enabled, value} ⛔ 终止
+
+     // Step 2: 按优先级遍历定向规则
      SELECT * FROM feature_targeting_rules
      WHERE feature_id = ? AND env_id = ? AND active = 1
-     ORDER BY priority ASC
+     ORDER BY priority ASC, id ASC
 
-     逐条匹配:
-     ┌─ priority=0:   user_list ["bob"]     → 不匹配，继续
-     ├─ priority=10:  user_list ["alice"]   → 命中！返回 {enabled, value} ⛔ 终止
-     ├─ priority=20:  version ">=2.0.0"     → (跳过)
-     ├─ priority=30:  percentage 30         → (跳过)
-     └─ priority=999: all null              → (跳过)
+     逐条解析 conditions JSON → 递归求值条件树：
+     ┌─ priority=0:   conditions=[{user_list:["bob"]}]  → 不匹配，继续
+     ├─ priority=10:  conditions=[{user_list:["alice"]}] → 命中！返回 {enabled, value} ⛔ 终止
+     ├─ priority=20:  conditions=[{version:">=2.0"}]     → (跳过)
+     ├─ priority=30:  conditions=[{percentage:30}]        → (跳过)
+     └─ priority=999: conditions=[]                       → match all (基线)
 
-  5. 无任何规则命中 → feature 返回默认值 (false / "")
+  6. 无任何规则命中 → feature 返回默认值 (enabled: false)
 ```
 
 ---
@@ -167,7 +205,7 @@ nullable 设计：被删除的 app/feature/env 不会导致审计记录丢失，
 
 - **App 级隔离**: 不同 app 的 feature key 可以同名，通过 `UNIQUE(app_id, key_name)` 隔离
 - **环境级隔离**: 同一 feature 在不同环境有独立规则，通过 `env_id` FK 隔离
-- **用户级隔离**: user_id 在外部系统管理，targeting_rules 通过 `feature_id`（隐含 app）区分，不同 app 的同名用户互不影响
+- **用户级隔离**: user_id 在外部系统管理，targeting_rules 通过 `feature_id`（隐含 app）区分
 
 ---
 

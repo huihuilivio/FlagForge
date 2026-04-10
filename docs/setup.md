@@ -4,49 +4,38 @@
 
 | 组件 | 版本要求 | 用途 |
 |------|---------|------|
-| Go | >= 1.21 | 后端服务 |
-| Node.js | >= 20 | Web 管理后台 |
-| MySQL | 8.x | 数据库 |
-| CMake | >= 3.14 | C++ SDK 构建 |
+| Go | >= 1.24 | 后端服务 |
+| Python 3 | >= 3.8 | 测试脚本（`pip install requests`） |
+| Node.js | >= 20 | Web 管理后台（开发中） |
+| CMake | >= 3.14 | C++ SDK 构建（开发中） |
 | Docker / Docker Compose | 最新版 | 容器化部署（可选） |
+
+> **注意**: 本地开发使用 **SQLite**，无需安装 MySQL。数据库文件 `flagforge.db` 由 GORM AutoMigrate 自动创建。
 
 ---
 
-## 方式一：Docker Compose 一键启动（推荐）
+## 方式一：一键测试（推荐）
 
-### 1. 安装 Docker
-
-- Windows: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- Linux:
-  ```bash
-  curl -fsSL https://get.docker.com | sh
-  ```
-
-### 2. 启动服务
+最快的启动方式，测试脚本会自动启动后端：
 
 ```bash
-cd FlagForge
-docker compose -f deploy/docker-compose.yml up --build
+pip install requests
+python scripts/test_api.py
 ```
 
-启动后：
-- 后端: http://localhost:8080
-- 前端: http://localhost:3000
-- MySQL: localhost:3306 (user: root, password: root, database: flagforge)
+脚本会自动：
+1. 检测后端是否已在运行
+2. 若未运行，清理旧 DB 并启动后端
+3. 运行 100 个测试用例
+4. 测试结束后关闭后端
 
-### 3. 初始化数据库
-
-首次启动后执行：
+### 带代码覆盖率
 
 ```bash
-docker exec -i flagforge-mysql-1 mysql -uroot -proot < deploy/init.sql
+python scripts/test_api.py --cover
 ```
 
-### 4. 停止服务
-
-```bash
-docker compose -f deploy/docker-compose.yml down
-```
+自动用 `go build -cover` 编译，测试结束后输出 Go 代码覆盖率报告。
 
 ---
 
@@ -63,19 +52,7 @@ docker compose -f deploy/docker-compose.yml down
 验证：
 
 ```bash
-go version   # >= 1.21
-```
-
-#### 安装 MySQL
-
-- Windows: `winget install Oracle.MySQL`
-- macOS: `brew install mysql`
-- Docker: `docker run -d -p 3306:3306 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=flagforge mysql:8`
-
-创建数据库：
-
-```bash
-mysql -uroot -proot < deploy/init.sql
+go version   # >= 1.24
 ```
 
 #### 启动后端
@@ -83,14 +60,22 @@ mysql -uroot -proot < deploy/init.sql
 ```bash
 cd backend
 go mod tidy
-go run main.go
+go run .
 ```
 
-后端运行于 http://localhost:8080
+后端运行于 http://localhost:8080，数据库文件自动创建 `flagforge.db`。
+
+#### 环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `DB_PATH` | `flagforge.db` | SQLite 数据库文件路径 |
 
 ---
 
 ### 2. 前端（React + Vite）
+
+> 开发中
 
 #### 安装 Node.js
 
@@ -118,6 +103,8 @@ npm run dev
 ---
 
 ### 3. C++ SDK
+
+> 开发中
 
 #### 安装工具链
 
@@ -151,11 +138,39 @@ g++ -std=c++17 -I ../../sdk/cpp/include main.cpp ../../sdk/cpp/src/feature_manag
 
 ---
 
+## 方式三：Docker Compose
+
+> **注意**: Docker Compose 配置使用 MySQL，当前后端代码仅实现了 SQLite 驱动。Docker 部署需要后续添加 MySQL 驱动支持。
+
+```bash
+cd FlagForge
+docker compose -f deploy/docker-compose.yml up --build
+```
+
+启动后：
+- 后端: http://localhost:8080
+- 前端: http://localhost:3000
+- MySQL: localhost:3306 (user: root, password: root, database: flagforge)
+
+```bash
+docker compose -f deploy/docker-compose.yml down
+```
+
+---
+
 ## 常见问题
 
-### Q: 后端启动报数据库连接失败
+### Q: 后端启动时表结构怎么创建？
 
-确认 MySQL 已启动，并检查连接参数。本地开发默认连接 `root:root@tcp(127.0.0.1:3306)/flagforge`。
+GORM AutoMigrate 自动建表，无需手动执行 SQL。`deploy/init.sql` 和 `deploy/init-mysql.sql` 仅作为参考。
+
+### Q: 如何切换数据库文件路径？
+
+设置环境变量 `DB_PATH`：
+
+```bash
+DB_PATH=/tmp/test.db go run .
+```
 
 ### Q: 前端 npm install 慢
 

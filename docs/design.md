@@ -21,18 +21,23 @@
 
 ### 2.1 功能目标
 
-* Feature 开关控制（on/off）
-* 灰度发布（按用户 / 百分比）
-* 白名单控制
+* Feature 开关控制（on/off + 自定义值）
+* 灰度发布（按用户 / 百分比 / 自定义 rollout key）
+* 白名单控制（user_list 条件）
+* 版本定向（>=、<=、>、<、= 全运算符）
+* 平台定向（ios / android / windows）
+* 扩展属性匹配（region、channel 等自定义 attr）
+* 用户级覆盖（用户自行开关 feature，优先级最高）
+* 递归条件树（AND/OR 任意嵌套）
+* 多应用 / 多环境支持
 * 动态更新（热更新）
-* 多环境支持（dev / test / prod）
 
 ### 2.2 非功能目标
 
 * 高可用（服务挂掉仍可运行）
 * 低延迟（本地判断）
 * 易扩展（支持未来 A/B 测试）
-* 可观测（日志 + 统计）
+* 可观测（审计日志）
 
 ---
 
@@ -41,13 +46,16 @@
 ```
                 ┌──────────────────────┐
                 │   Web Admin Console  │
+                │  (React + Ant Design)│
                 └─────────┬────────────┘
-                          │ REST API
+                          │ REST API (Admin)
                           ▼
                 ┌──────────────────────┐
                 │ Feature Config Server│
+                │  (Go + Gin + GORM)   │
+                │  SQLite / MySQL      │
                 └─────────┬────────────┘
-                          │ HTTP 拉取
+                          │ REST API (Client)
         ┌─────────────────┴─────────────────┐
         ▼                                   ▼
 ┌──────────────┐                    ┌──────────────┐
@@ -61,42 +69,79 @@
 ## 4. 仓库结构
 
 ```
-feature-flag-platform/
-├── backend/          # 配置服务
-├── web/              # 管理后台
+FlagForge/
+├── backend/          # Go 配置服务（模块名：goflagforge）
+│   ├── api/          # HTTP 接口（Gin handlers）
+│   ├── service/      # 业务逻辑 + 规则引擎
+│   ├── model/        # GORM 数据模型
+│   ├── storage/      # 数据库操作
+│   └── cache/        # 缓存（预留）
+├── web/              # React 管理后台（开发中）
 ├── sdk/
-│   └── cpp/          # C++ SDK
+│   └── cpp/          # C++ SDK（开发中）
+├── deploy/           # Docker Compose + SQL
+├── scripts/          # 测试脚本
 ├── docs/             # 文档
-├── deploy/           # 部署配置
-└── scripts/          # 启动脚本
+└── example/          # 示例代码
 ```
 
 ---
 
 ## 5. 核心概念
 
-### 5.1 Feature
+### 5.1 数据模型
+
+```
+App → Environment → Feature → TargetingRule
+                                    ↑
+                           UserFeatureOverride
+```
+
+- **App** — 应用（产品），feature flag 的顶层管理单元
+- **Environment** — 环境（dev / staging / prod），per-app 级别
+- **Feature** — 功能开关，绑定到 App，支持 boolean / string / json 三种值类型
+- **TargetingRule** — 定向规则，绑定到 Feature + Environment，按 priority 排序求值
+- **UserFeatureOverride** — 用户级覆盖，优先级最高
+
+### 5.2 Conditions DSL
+
+规则的匹配条件使用 JSON 描述，支持递归 AND/OR 嵌套：
 
 ```json
 {
-  "key": "new_ui",
-  "enabled": true
+  "op": "and",
+  "items": [
+    {"type": "user_list", "value": ["alice"]},
+    {
+      "op": "or",
+      "items": [
+        {"type": "platform", "value": "ios"},
+        {"type": "version", "value": ">=2.0.0"}
+      ]
+    }
+  ]
 }
 ```
 
----
+等价于 `user = alice AND (platform = ios OR version >= 2.0.0)`
 
-### 5.2 Feature Rule
+**三种格式：**
 
-```json
-{
-  "key": "new_ui",
-  "enabled": true,
-  "percentage": 30,
-  "whitelist": ["user1", "user2"],
-  "min_version": "1.0.0"
-}
-```
+| 格式 | 含义 |
+|------|------|
+| `[]` 或空 | match all（基线规则） |
+| `[{...}, {...}]` | 隐式 AND（裸数组，向后兼容） |
+| `{"op":"and/or", "items":[...]}` | 显式条件树 |
+
+**6 种条件类型：**
+
+| type | value 格式 | 说明 |
+|------|-----------|------|
+| `user_list` | `["alice", "bob"]` | 白名单 |
+| `percentage` | `30` 或 `{"pct":30,"key":"exp_abc"}` | 灰度百分比 |
+| `version` | `">=2.0.0"` | 版本约束（支持 `>` `>=` `<` `<=` `=`） |
+| `platform` | `"ios"` | 平台匹配（不区分大小写） |
+| `attr` | `{"key":"region","value":"cn"}` | 扩展属性匹配 |
 
 ---
 
@@ -104,120 +149,60 @@ feature-flag-platform/
 
 ### 6.1 技术选型
 
-* 语言：Go
-* 框架：Gin
-* 数据库：MySQL
-* 缓存：Redis（可选）
+| 组件 | 实现 |
+|------|------|
+| 语言 | Go 1.24 |
+| 框架 | Gin |
+| ORM | GORM |
+| 数据库 | SQLite（本地开发）/ MySQL（生产） |
+| 模块名 | `goflagforge` |
 
----
+### 6.2 数据库设计
 
-### 6.2 模块划分
+6 张表：`apps`、`environments`、`features`、`feature_targeting_rules`、`user_feature_overrides`、`audit_logs`
 
-```
-backend/
-├── api/        # HTTP接口
-├── service/    # 业务逻辑
-├── model/      # 数据结构
-├── storage/    # DB操作
-└── cache/      # 缓存
-```
+详见 [数据库设计文档](database.md)。
 
----
+### 6.3 API 设计
 
-### 6.3 数据库设计
+15 个接口，分为客户端接口和管理接口：
 
-#### features 表
+**客户端接口：**
 
-```sql
-CREATE TABLE features (
-    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-    key_name VARCHAR(100) NOT NULL,
-    value_type VARCHAR(20) NOT NULL DEFAULT 'boolean' COMMENT 'boolean / string / json',
-    description VARCHAR(500) DEFAULT '',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-```
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/features` | 求值所有 feature 开关状态 |
+| PUT | `/api/v1/override` | 用户设置 feature 覆盖 |
+| DELETE | `/api/v1/override` | 用户删除 feature 覆盖 |
+| GET | `/api/v1/overrides` | 列出用户的所有覆盖 |
 
-#### feature_rules 表（多环境规则）
+**管理接口：**
 
-```sql
-CREATE TABLE feature_rules (
-    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-    feature_id BIGINT UNSIGNED NOT NULL,
-    env VARCHAR(20) NOT NULL DEFAULT 'prod',
-    enabled BOOLEAN NOT NULL DEFAULT FALSE,
-    value VARCHAR(500) DEFAULT '',
-    percentage TINYINT UNSIGNED NOT NULL DEFAULT 100,
-    min_version VARCHAR(20) DEFAULT ''
-);
-```
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET/POST | `/admin/apps`, `/admin/app` | 应用管理 |
+| GET/POST | `/admin/apps/:app_id/envs`, `/admin/apps/:app_id/env` | 环境管理 |
+| GET/POST/PUT/DELETE | `/admin/features`, `/admin/feature[/:id]` | Feature 管理 |
+| POST/PUT/DELETE | `/admin/rule[/:id]` | 定向规则管理 |
 
----
+详见 [API 参考文档](api.md)。
 
-### 6.4 API 设计
+### 6.4 规则求值引擎
 
-#### 客户端接口
+求值优先级：**用户覆盖 > 定向规则 > 默认值**
 
 ```
-GET /api/v1/features
+1. 查询用户级覆盖（UserFeatureOverride），命中则直接返回
+2. 按 priority ASC, id ASC 顺序遍历定向规则
+3. 对每条规则解析 conditions JSON 为递归条件树
+4. evalNode() 递归求值：
+   - 组合节点（and/or）→ 递归子节点
+   - 叶子节点 → matchLeaf() 分发到具体匹配函数
+5. 首条命中的规则终止求值，返回其 enabled + value
+6. 无规则命中 → enabled: false
 ```
 
-请求参数：
-
-| 参数      | 说明    |
-| ------- | ----- |
-| app     | 应用名   |
-| version | 客户端版本 |
-| user_id | 用户ID  |
-
-返回：
-
-```json
-{
-  "features": {
-    "new_ui": true,
-    "chat_ai": false
-  }
-}
-```
-
----
-
-#### 管理接口
-
-```
-GET    /admin/features
-POST   /admin/feature
-PUT    /admin/feature/:id
-DELETE /admin/feature/:id
-```
-
----
-
-### 6.5 灰度逻辑
-
-执行顺序：
-
-1. 判断 enabled
-2. 判断版本
-3. 判断白名单
-4. 判断百分比
-
-```go
-func IsEnabled(feature Feature, userId string) bool {
-    if !feature.Enabled {
-        return false
-    }
-
-    if inWhitelist(userId) {
-        return true
-    }
-
-    hash := hash(userId) % 100
-    return hash < feature.Percentage
-}
-```
+灰度百分比使用 `FNV32a(featureKey + \0 + userID) % 100` 计算，featureKey 作为默认盐确保不同 feature 的灰度分配不同。
 
 ---
 
@@ -228,25 +213,48 @@ func IsEnabled(feature Feature, userId string) bool {
 * React + Vite
 * Ant Design（UI）
 
----
-
 ### 7.2 页面设计
 
 #### Feature 列表页
 
-* Feature Key
-* 开关（Switch）
-* 灰度比例（Slider）
-* 白名单（输入框）
+* Feature Key + 描述
+* 各环境下的规则数量
 * 操作（编辑 / 删除）
+
+#### 规则编辑页
+
+* 条件树可视化编辑
+* 优先级拖拽排序
+* 灰度比例滑块
+* 用户白名单输入
+* 版本/平台选择器
+
+### 7.3 状态
+
+开发中。
 
 ---
 
-### 7.3 功能点
+## 8. C++ SDK
 
-* 实时开关控制
-* 灰度调整
-* 发布按钮（触发更新）
+### 8.1 设计
+
+* 定期从后端拉取 feature 配置
+* 本地缓存（文件 + 内存）
+* 提供 `isEnabled()` / `getValue()` 接口
+
+### 8.2 状态
+
+接口已设计，实现开发中。
+
+---
+
+## 9. 测试
+
+- 100 个集成测试用例（`scripts/test_api.py`）
+- API 接口覆盖率：15/15（100%）
+- Go 代码覆盖率：88.8%
+- 测试脚本自动启动/关闭后端，支持 `--cover` 参数
 
 ---
 
