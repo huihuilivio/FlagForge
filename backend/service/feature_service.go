@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"hash/fnv"
+	"log"
 	"strconv"
 	"strings"
 
@@ -90,39 +91,124 @@ func (s *FeatureService) GetByID(id uint) (*model.Feature, error) {
 }
 
 func (s *FeatureService) Create(feature *model.Feature) error {
-	return s.Repo.Create(feature)
+	if err := s.Repo.Create(feature); err != nil {
+		return err
+	}
+	s.auditApp(feature.AppID, "create", "feature", feature.ID, feature)
+	return nil
 }
 
 func (s *FeatureService) Update(feature *model.Feature) error {
-	return s.Repo.Update(feature)
+	if err := s.Repo.Update(feature); err != nil {
+		return err
+	}
+	s.auditApp(feature.AppID, "update", "feature", feature.ID, feature)
+	return nil
 }
 
 func (s *FeatureService) Delete(id uint) error {
-	return s.Repo.Delete(id)
+	old, _ := s.Repo.FindByID(id)
+	if err := s.Repo.Delete(id); err != nil {
+		return err
+	}
+	if old != nil {
+		s.auditApp(old.AppID, "delete", "feature", id, nil)
+	}
+	return nil
 }
 
 // ---- Targeting Rule CRUD ----
 
+func (s *FeatureService) ListRules(appID, envID, featureID uint) ([]model.FeatureTargetingRule, error) {
+	return s.Repo.ListRules(appID, envID, featureID)
+}
+
+func (s *FeatureService) FindRuleByID(id uint) (*model.FeatureTargetingRule, error) {
+	return s.Repo.FindRuleByID(id)
+}
+
 func (s *FeatureService) CreateRule(rule *model.FeatureTargetingRule) error {
-	return s.Repo.CreateRule(rule)
+	if err := s.Repo.CreateRule(rule); err != nil {
+		return err
+	}
+	s.audit(rule.FeatureID, rule.EnvID, "create", "rule", rule.ID, rule)
+	return nil
 }
 
 func (s *FeatureService) UpdateRule(rule *model.FeatureTargetingRule) error {
-	return s.Repo.UpdateRule(rule)
+	if err := s.Repo.UpdateRule(rule); err != nil {
+		return err
+	}
+	s.audit(rule.FeatureID, rule.EnvID, "update", "rule", rule.ID, rule)
+	return nil
 }
 
 func (s *FeatureService) DeleteRule(id uint) error {
-	return s.Repo.DeleteRule(id)
+	old, _ := s.Repo.FindRuleByID(id)
+	if err := s.Repo.DeleteRule(id); err != nil {
+		return err
+	}
+	if old != nil {
+		s.audit(old.FeatureID, old.EnvID, "delete", "rule", id, nil)
+	}
+	return nil
 }
 
 // ---- App / Env ----
 
 func (s *FeatureService) ListApps() ([]model.App, error) { return s.Repo.ListApps() }
-func (s *FeatureService) CreateApp(app *model.App) error { return s.Repo.CreateApp(app) }
+func (s *FeatureService) CreateApp(app *model.App) error {
+	if err := s.Repo.CreateApp(app); err != nil {
+		return err
+	}
+	s.auditApp(app.ID, "create", "app", app.ID, app)
+	return nil
+}
+func (s *FeatureService) UpdateApp(app *model.App) error {
+	if err := s.Repo.UpdateApp(app); err != nil {
+		return err
+	}
+	s.auditApp(app.ID, "update", "app", app.ID, app)
+	return nil
+}
+func (s *FeatureService) DeleteApp(id uint) error {
+	if err := s.Repo.DeleteApp(id); err != nil {
+		return err
+	}
+	s.auditApp(id, "delete", "app", id, nil)
+	return nil
+}
+func (s *FeatureService) GetAppByID(id uint) (*model.App, error) { return s.Repo.FindAppByID(id) }
 func (s *FeatureService) ListEnvs(appID uint) ([]model.Environment, error) {
 	return s.Repo.ListEnvsByApp(appID)
 }
-func (s *FeatureService) CreateEnv(env *model.Environment) error { return s.Repo.CreateEnv(env) }
+func (s *FeatureService) CreateEnv(env *model.Environment) error {
+	if err := s.Repo.CreateEnv(env); err != nil {
+		return err
+	}
+	s.auditApp(env.AppID, "create", "env", env.ID, env)
+	return nil
+}
+func (s *FeatureService) UpdateEnv(env *model.Environment) error {
+	if err := s.Repo.UpdateEnv(env); err != nil {
+		return err
+	}
+	s.auditApp(env.AppID, "update", "env", env.ID, env)
+	return nil
+}
+func (s *FeatureService) DeleteEnv(id uint) error {
+	old, _ := s.Repo.FindEnvByID(id)
+	if err := s.Repo.DeleteEnv(id); err != nil {
+		return err
+	}
+	if old != nil {
+		s.auditApp(old.AppID, "delete", "env", id, nil)
+	}
+	return nil
+}
+func (s *FeatureService) GetEnvByID(id uint) (*model.Environment, error) {
+	return s.Repo.FindEnvByID(id)
+}
 
 // ---- User Feature Override ----
 
@@ -138,6 +224,48 @@ func (s *FeatureService) ListOverrides(appID, envID uint, userID string) ([]mode
 	return s.Repo.FindOverridesByUser(appID, envID, userID)
 }
 
+// ---- Audit Log ----
+
+func (s *FeatureService) ListAuditLogs(appID uint, targetType string, limit, offset int) ([]model.AuditLog, int64, error) {
+	return s.Repo.ListAuditLogs(appID, targetType, limit, offset)
+}
+
+// audit 记录操作审计（feature/rule 相关）
+func (s *FeatureService) audit(featureID, envID uint, action, targetType string, targetID uint, detail interface{}) {
+	var appID uint
+	if f, err := s.Repo.FindByID(featureID); err == nil && f != nil {
+		appID = f.AppID
+	}
+	s.writeAudit(&appID, &featureID, &envID, action, targetType, targetID, detail)
+}
+
+// auditApp 记录操作审计（app/env 相关）
+func (s *FeatureService) auditApp(appID uint, action, targetType string, targetID uint, detail interface{}) {
+	s.writeAudit(&appID, nil, nil, action, targetType, targetID, detail)
+}
+
+func (s *FeatureService) writeAudit(appID, featureID, envID *uint, action, targetType string, targetID uint, detail interface{}) {
+	var detailJSON string
+	if detail != nil {
+		if b, err := json.Marshal(detail); err == nil {
+			detailJSON = string(b)
+		}
+	}
+	entry := &model.AuditLog{
+		AppID:      appID,
+		FeatureID:  featureID,
+		EnvID:      envID,
+		Operator:   "admin",
+		Action:     action,
+		TargetType: targetType,
+		TargetID:   targetID,
+		Detail:     detailJSON,
+	}
+	if err := s.Repo.CreateAuditLog(entry); err != nil {
+		log.Printf("[WARN] audit log write failed: %v", err)
+	}
+}
+
 // ============================================================
 // 规则引擎：递归条件树，支持 AND / OR 嵌套
 // ============================================================
@@ -148,6 +276,8 @@ func (s *FeatureService) ListOverrides(appID, envID uint, userID string) ([]mode
 //
 // 向后兼容：裸数组 [...] 等价于 {"op":"and","items":[...]}
 // 空/[] = match all（基线规则）
+
+const maxConditionDepth = 20 // 条件树最大递归深度
 
 // ConditionNode 条件树节点
 type ConditionNode struct {
@@ -197,23 +327,26 @@ func matchRule(rule model.FeatureTargetingRule, featureKey string, ctx EvalConte
 	if root == nil {
 		return true // 空条件 = match all（基线规则）
 	}
-	return evalNode(*root, featureKey, ctx)
+	return evalNode(*root, featureKey, ctx, 0)
 }
 
-// evalNode 递归求值条件树
-func evalNode(node ConditionNode, featureKey string, ctx EvalContext) bool {
+// evalNode 递归求值条件树（depth 防止恶意深嵌套导致栈溢出）
+func evalNode(node ConditionNode, featureKey string, ctx EvalContext, depth int) bool {
+	if depth > maxConditionDepth {
+		return false
+	}
 	if node.isGroup() {
 		switch strings.ToLower(node.Op) {
 		case "and":
 			for _, child := range node.Items {
-				if !evalNode(child, featureKey, ctx) {
+				if !evalNode(child, featureKey, ctx, depth+1) {
 					return false
 				}
 			}
 			return true
 		case "or":
 			for _, child := range node.Items {
-				if evalNode(child, featureKey, ctx) {
+				if evalNode(child, featureKey, ctx, depth+1) {
 					return true
 				}
 			}

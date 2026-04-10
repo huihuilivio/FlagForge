@@ -155,7 +155,7 @@ per-app 级别，每个应用独立定义自己的环境集。
 | env_id | uint | nullable, FK → environments(id) ON DELETE SET NULL | 快速过滤环境 |
 | operator | varchar(100) | | 操作者 |
 | action | varchar(50) | NOT NULL | `create` / `update` / `delete` / `toggle` |
-| target_type | varchar(50) | NOT NULL | `feature` / `targeting_rule` |
+| target_type | varchar(50) | NOT NULL | `app` / `environment` / `feature` / `targeting_rule` |
 | target_id | uint | NOT NULL | 操作对象 ID |
 | detail | json/text | | 变更详情 |
 | created_at | datetime | NOT NULL | |

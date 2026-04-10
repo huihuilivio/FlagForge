@@ -48,18 +48,25 @@ ALL_ROUTES = {
     # Admin - App
     ("GET",    "/admin/apps"),
     ("POST",   "/admin/app"),
+    ("PUT",    "/admin/app/:id"),
+    ("DELETE", "/admin/app/:id"),
     # Admin - Env
     ("GET",    "/admin/apps/:app_id/envs"),
     ("POST",   "/admin/apps/:app_id/env"),
+    ("PUT",    "/admin/env/:id"),
+    ("DELETE", "/admin/env/:id"),
     # Admin - Feature
     ("GET",    "/admin/features"),
     ("POST",   "/admin/feature"),
     ("PUT",    "/admin/feature/:id"),
     ("DELETE", "/admin/feature/:id"),
     # Admin - Rule
+    ("GET",    "/admin/rules"),
     ("POST",   "/admin/rule"),
     ("PUT",    "/admin/rule/:id"),
     ("DELETE", "/admin/rule/:id"),
+    # Admin - Audit
+    ("GET",    "/admin/audit-logs"),
 }
 
 # 记录测试过程中命中的路由
@@ -69,6 +76,8 @@ _hit_routes = set()
 _ROUTE_PATTERNS = [
     (re.compile(r"^/admin/apps/[^/]+/envs$"),    "/admin/apps/:app_id/envs"),
     (re.compile(r"^/admin/apps/[^/]+/env$"),      "/admin/apps/:app_id/env"),
+    (re.compile(r"^/admin/app/[^/]+$"),           "/admin/app/:id"),
+    (re.compile(r"^/admin/env/[^/]+$"),           "/admin/env/:id"),
     (re.compile(r"^/admin/feature/[^/]+$"),       "/admin/feature/:id"),
     (re.compile(r"^/admin/rule/[^/]+$"),          "/admin/rule/:id"),
 ]
@@ -336,6 +345,10 @@ def main():
     test("List Apps", "GET", "/admin/apps",
          expect_fn=lambda d: isinstance(d, list) and len(d) > 0)
 
+    test("Update App", "PUT", f"/admin/app/{app_id}",
+         json_body={"name": "Test App (updated)", "description": "updated desc"},
+         expect_fn=lambda d: "updated" in d.get("name", ""))
+
     # ========== Admin: Environment ==========
     print("\n--- Environment ---")
     env = test("Create Env (dev)", "POST", f"/admin/apps/{app_id}/env",
@@ -348,7 +361,22 @@ def main():
          json_body={"env_key": "prod", "name": "Production", "is_production": True},
          expect_status=201)
 
+    env_prod = test("Create Env (staging)", "POST", f"/admin/apps/{app_id}/env",
+         json_body={"env_key": "staging", "name": "Staging"},
+         expect_status=201)
+    env_staging_id = env_prod["id"] if env_prod else 99
+
     test("List Envs", "GET", f"/admin/apps/{app_id}/envs",
+         expect_fn=lambda d: isinstance(d, list) and len(d) == 3)
+
+    test("Update Env", "PUT", f"/admin/env/{env_id}",
+         json_body={"name": "Development (updated)"},
+         expect_fn=lambda d: "updated" in d.get("name", ""))
+
+    test("Delete Env (staging)", "DELETE", f"/admin/env/{env_staging_id}",
+         expect_fn=lambda d: d.get("message") == "deleted")
+
+    test("List Envs after delete", "GET", f"/admin/apps/{app_id}/envs",
          expect_fn=lambda d: isinstance(d, list) and len(d) == 2)
 
     # ========== Admin: Feature ==========
@@ -371,6 +399,13 @@ def main():
     test("Update Feature", "PUT", f"/admin/feature/{feat_id}",
          json_body={"description": "Dark mode toggle (updated)"},
          expect_fn=lambda d: "updated" in d.get("description", ""))
+
+    # ========== Admin: List Rules ==========
+    print("\n--- List Rules ---")
+
+    test("List Rules (no filter)", "GET", "/admin/rules",
+         params={"app_id": app_id},
+         expect_fn=lambda d: isinstance(d, list))
 
     # ========== Admin: Targeting Rule ==========
     print("\n--- Targeting Rule ---")
@@ -866,6 +901,31 @@ def main():
     test("List Features (all)", "GET", "/admin/features",
          expect_fn=lambda d: isinstance(d, list) and len(d) >= 2)
 
+    # ========== Admin: Audit Logs ==========
+    print("\n--- Audit Logs ---")
+
+    test("List Audit Logs", "GET", "/admin/audit-logs",
+         expect_fn=lambda d: isinstance(d, dict) and isinstance(d.get("data"), list) and len(d["data"]) > 0)
+
+    test("List Audit Logs (with app filter)", "GET", "/admin/audit-logs",
+         params={"app_id": app_id},
+         expect_fn=lambda d: isinstance(d, dict) and isinstance(d.get("data"), list))
+
+    test("List Audit Logs (with pagination)", "GET", "/admin/audit-logs",
+         params={"limit": 5, "offset": 0},
+         expect_fn=lambda d: isinstance(d, dict) and isinstance(d.get("data"), list) and len(d["data"]) <= 5)
+
+    # ========== Admin: List Rules (with filters) ==========
+    print("\n--- List Rules (with filters) ---")
+
+    test("List Rules (env filter)", "GET", "/admin/rules",
+         params={"app_id": app_id, "env_id": env_id},
+         expect_fn=lambda d: isinstance(d, list))
+
+    test("List Rules (feature filter)", "GET", "/admin/rules",
+         params={"app_id": app_id, "feature_id": feat_id},
+         expect_fn=lambda d: isinstance(d, list))
+
     # ========== Admin: Delete ==========
     print("\n--- Cleanup ---")
 
@@ -878,6 +938,54 @@ def main():
     test("List Features after delete", "GET", "/admin/features",
          params={"app_id": app_id},
          expect_fn=lambda d: isinstance(d, list) and len(d) == 1)
+
+    # ========== Admin: Delete App (cascading) ==========
+    print("\n--- Delete App (cascading) ---")
+
+    # Create a temporary app to test cascading delete
+    tmp_app = test("Create temp App", "POST", "/admin/app",
+                   json_body={"app_key": "tmp_app", "name": "Temp"},
+                   expect_status=201)
+    tmp_app_id = tmp_app["id"] if tmp_app else 999
+
+    test("Create temp Env", "POST", f"/admin/apps/{tmp_app_id}/env",
+         json_body={"env_key": "tmp_env", "name": "Tmp Env"},
+         expect_status=201)
+
+    test("Create temp Feature", "POST", "/admin/feature",
+         json_body={"app_id": tmp_app_id, "key_name": "tmp_feat", "value_type": "boolean"},
+         expect_status=201)
+
+    test("Delete App (cascade)", "DELETE", f"/admin/app/{tmp_app_id}",
+         expect_fn=lambda d: d.get("message") == "deleted")
+
+    test("Verify app deleted", "GET", "/admin/apps",
+         expect_fn=lambda d: all(a["app_key"] != "tmp_app" for a in d))
+
+    # ========== Error: UpdateApp/DeleteApp/UpdateEnv/DeleteEnv invalid IDs ==========
+    print("\n--- Error: New Endpoints Invalid IDs ---")
+
+    test("Update App invalid id → 400", "PUT", "/admin/app/abc",
+         json_body={"name": "test"},
+         expect_status=400)
+
+    test("Delete App invalid id → 400", "DELETE", "/admin/app/abc",
+         expect_status=400)
+
+    test("Update Env invalid id → 400", "PUT", "/admin/env/abc",
+         json_body={"name": "test"},
+         expect_status=400)
+
+    test("Delete Env invalid id → 400", "DELETE", "/admin/env/abc",
+         expect_status=400)
+
+    test("Update App bad json → 400", "PUT", f"/admin/app/{app_id}",
+         json_body="not_valid",
+         expect_status=400)
+
+    test("Update Env bad json → 400", "PUT", f"/admin/env/{env_id}",
+         json_body="not_valid",
+         expect_status=400)
 
     # ========== Summary ==========
     total = PASS + FAIL

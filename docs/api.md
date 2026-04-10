@@ -99,6 +99,28 @@ GET /api/v1/features?app_key=my_game&env_key=prod&user_id=alice&version=2.1.0&pl
 
 **响应 201** — 返回创建后的完整对象（含 `id`）
 
+#### PUT /admin/app/:id
+
+更新应用。
+
+**路径参数**: `id` — 应用 ID
+
+**请求体** — 同 POST，字段可选（部分更新）
+
+**响应 200** — 返回更新后的完整对象
+
+#### DELETE /admin/app/:id
+
+删除应用（级联删除其下所有环境、feature、规则、覆盖）。
+
+**路径参数**: `id` — 应用 ID
+
+**响应 200**
+
+```json
+{ "message": "deleted" }
+```
+
 ---
 
 ### Environment（环境）
@@ -165,6 +187,28 @@ GET /api/v1/features?app_key=my_game&env_key=prod&user_id=alice&version=2.1.0&pl
 | `is_production` | bool | | 是否生产环境，默认 false |
 
 **响应 201** — 返回创建后的完整对象（含 `id`，`app_id` 从路径自动填充）
+
+#### PUT /admin/env/:id
+
+更新环境。
+
+**路径参数**: `id` — 环境 ID
+
+**请求体** — 同 POST，字段可选（部分更新）
+
+**响应 200** — 返回更新后的完整对象
+
+#### DELETE /admin/env/:id
+
+删除环境（级联删除其下所有规则和覆盖）。
+
+**路径参数**: `id` — 环境 ID
+
+**响应 200**
+
+```json
+{ "message": "deleted" }
+```
 
 ---
 
@@ -266,6 +310,20 @@ GET /api/v1/features?app_key=my_game&env_key=prod&user_id=alice&version=2.1.0&pl
 ---
 
 ### Targeting Rule（定向规则）
+
+#### GET /admin/rules
+
+列出定向规则，支持多条件过滤。
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `app_id` | uint | | 按应用过滤 |
+| `env_id` | uint | | 按环境过滤 |
+| `feature_id` | uint | | 按 feature 过滤 |
+
+**响应 200** — 规则列表（预加载环境信息）
 
 #### POST /admin/rule
 
@@ -400,6 +458,39 @@ GET /api/v1/features?app_key=my_game&env_key=prod&user_id=alice&version=2.1.0&pl
     "value": "",
     "created_at": "2026-04-10T10:00:00Z",
     "updated_at": "2026-04-10T10:00:00Z"
+  }
+]
+```
+
+---
+
+### Audit Log（操作审计）
+
+#### GET /admin/audit-logs
+
+查询操作审计日志，支持分页和过滤。
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `app_id` | uint | | 按应用过滤 |
+| `target_type` | string | | 按类型过滤（`app` / `environment` / `feature` / `rule`） |
+| `limit` | int | | 每页数量，默认 50，最大 200 |
+| `offset` | int | | 偏移量，默认 0 |
+
+**响应 200** — 返回 `{ "data": [...], "total": N }`
+
+```json
+[
+  {
+    "id": 1,
+    "app_id": 1,
+    "action": "create",
+    "target_type": "feature",
+    "target_id": 1,
+    "detail": "{\"key_name\":\"dark_mode\"}",
+    "created_at": "2026-04-10T10:00:00Z"
   }
 ]
 ```

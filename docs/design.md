@@ -71,14 +71,14 @@
 ```
 FlagForge/
 ├── backend/          # Go 配置服务（模块名：goflagforge）
-│   ├── api/          # HTTP 接口（Gin handlers）
-│   ├── service/      # 业务逻辑 + 规则引擎
-│   ├── model/        # GORM 数据模型
-│   ├── storage/      # 数据库操作
+│   ├── api/          # HTTP 接口（Gin handlers）21 个路由
+│   ├── service/      # 业务逻辑 + 规则引擎 + 审计记录
+│   ├── model/        # GORM 数据模型（6 张表）
+│   ├── storage/      # 数据库操作（含级联删除）
 │   └── cache/        # 缓存（预留）
-├── web/              # React 管理后台（开发中）
+├── web/              # React 管理后台（6 个页面）
 ├── sdk/
-│   └── cpp/          # C++ SDK（开发中）
+│   └── cpp/          # C++ SDK
 ├── deploy/           # Docker Compose + SQL
 ├── scripts/          # 测试脚本
 ├── docs/             # 文档
@@ -165,7 +165,7 @@ App → Environment → Feature → TargetingRule
 
 ### 6.3 API 设计
 
-15 个接口，分为客户端接口和管理接口：
+21 个接口，分为客户端接口和管理接口：
 
 **客户端接口：**
 
@@ -180,10 +180,12 @@ App → Environment → Feature → TargetingRule
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET/POST | `/admin/apps`, `/admin/app` | 应用管理 |
+| GET/POST/PUT/DELETE | `/admin/apps`, `/admin/app[/:id]` | 应用管理（含级联删除） |
 | GET/POST | `/admin/apps/:app_id/envs`, `/admin/apps/:app_id/env` | 环境管理 |
+| PUT/DELETE | `/admin/env/:id` | 环境更新/删除（含级联删除） |
 | GET/POST/PUT/DELETE | `/admin/features`, `/admin/feature[/:id]` | Feature 管理 |
-| POST/PUT/DELETE | `/admin/rule[/:id]` | 定向规则管理 |
+| GET/POST/PUT/DELETE | `/admin/rules`, `/admin/rule[/:id]` | 定向规则管理 |
+| GET | `/admin/audit-logs` | 操作审计日志 |
 
 详见 [API 参考文档](api.md)。
 
@@ -210,28 +212,29 @@ App → Environment → Feature → TargetingRule
 
 ### 7.1 技术选型
 
-* React + Vite
-* Ant Design（UI）
+* React 18 + Vite 5
+* Ant Design 5（UI）
+* react-router-dom 6
+* axios
 
-### 7.2 页面设计
+### 7.2 主题
 
-#### Feature 列表页
+浅橙黄风格：主色 `#f5a623`，侧边栏 `#fff8ee`，渐变 Header `#fff3e0→#ffe0b2`
 
-* Feature Key + 描述
-* 各环境下的规则数量
-* 操作（编辑 / 删除）
+### 7.3 页面
 
-#### 规则编辑页
+| 路由 | 页面 | 说明 |
+|------|------|------|
+| `/apps` | 应用管理 | 应用 CRUD，统计卡片 |
+| `/envs` | 环境管理 | 环境 CRUD，页面内应用选择器 |
+| `/features` | 特性管理 | Feature CRUD，页面内应用+环境选择器，规则抽屉 |
+| `/rules` | 规则管理 | 规则 CRUD，页面内应用+环境选择器，条件编辑器 |
+| `/query` | 特性查询 | 客户端视角 feature 求值，过滤器模式 |
+| `/audit` | 操作审计 | 审计日志查看，分页+类型过滤 |
 
-* 条件树可视化编辑
-* 优先级拖拽排序
-* 灰度比例滑块
-* 用户白名单输入
-* 版本/平台选择器
+### 7.4 开发说明
 
-### 7.3 状态
-
-开发中。
+每个管理页面独立管理状态，通过页面内 Select 下拉框选择应用/环境，无全局上下文依赖。
 
 ---
 
@@ -251,10 +254,10 @@ App → Environment → Feature → TargetingRule
 
 ## 9. 测试
 
-- 100 个集成测试用例（`scripts/test_api.py`）
-- API 接口覆盖率：15/15（100%）
-- Go 代码覆盖率：88.8%
+- 集成测试用例（`scripts/test_api.py`）
+- API 接口覆盖率：21/21（100%）
 - 测试脚本自动启动/关闭后端，支持 `--cover` 参数
+- 审计日志全覆盖：所有 CRUD 操作自动记录到 audit_logs
 
 ---
 

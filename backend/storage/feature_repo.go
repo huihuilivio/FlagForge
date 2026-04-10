@@ -28,6 +28,33 @@ func (r *FeatureRepo) CreateApp(app *model.App) error {
 	return DB.Create(app).Error
 }
 
+func (r *FeatureRepo) UpdateApp(app *model.App) error {
+	return DB.Save(app).Error
+}
+
+func (r *FeatureRepo) DeleteApp(id uint) error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		// 删除该 app 下 feature 关联的规则
+		tx.Where("feature_id IN (SELECT id FROM features WHERE app_id = ?)", id).Delete(&model.FeatureTargetingRule{})
+		// 删除该 app 下的 override
+		tx.Where("app_id = ?", id).Delete(&model.UserFeatureOverride{})
+		// 删除该 app 下的 feature
+		tx.Where("app_id = ?", id).Delete(&model.Feature{})
+		// 删除该 app 下的环境
+		tx.Where("app_id = ?", id).Delete(&model.Environment{})
+		// 删除 app 本身
+		return tx.Delete(&model.App{}, id).Error
+	})
+}
+
+func (r *FeatureRepo) FindAppByID(id uint) (*model.App, error) {
+	var app model.App
+	if err := DB.First(&app, id).Error; err != nil {
+		return nil, err
+	}
+	return &app, nil
+}
+
 // ---- Environment ----
 
 func (r *FeatureRepo) ListEnvsByApp(appID uint) ([]model.Environment, error) {
@@ -46,6 +73,29 @@ func (r *FeatureRepo) FindEnvByAppAndKey(appID uint, envKey string) (*model.Envi
 
 func (r *FeatureRepo) CreateEnv(env *model.Environment) error {
 	return DB.Create(env).Error
+}
+
+func (r *FeatureRepo) UpdateEnv(env *model.Environment) error {
+	return DB.Save(env).Error
+}
+
+func (r *FeatureRepo) DeleteEnv(id uint) error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		// 删除该环境下的规则
+		tx.Where("env_id = ?", id).Delete(&model.FeatureTargetingRule{})
+		// 删除该环境下的 override
+		tx.Where("env_id = ?", id).Delete(&model.UserFeatureOverride{})
+		// 删除环境本身
+		return tx.Delete(&model.Environment{}, id).Error
+	})
+}
+
+func (r *FeatureRepo) FindEnvByID(id uint) (*model.Environment, error) {
+	var env model.Environment
+	if err := DB.First(&env, id).Error; err != nil {
+		return nil, err
+	}
+	return &env, nil
 }
 
 // ---- Feature ----
@@ -95,6 +145,31 @@ func (r *FeatureRepo) Delete(id uint) error {
 
 // ---- FeatureTargetingRule ----
 
+func (r *FeatureRepo) ListRules(appID, envID, featureID uint) ([]model.FeatureTargetingRule, error) {
+	var rules []model.FeatureTargetingRule
+	q := DB.Preload("Env")
+	if featureID > 0 {
+		q = q.Where("feature_id = ?", featureID)
+	}
+	if envID > 0 {
+		q = q.Where("env_id = ?", envID)
+	}
+	if appID > 0 {
+		// rules don't have app_id directly; join through features
+		q = q.Where("feature_id IN (SELECT id FROM features WHERE app_id = ?)", appID)
+	}
+	err := q.Order("feature_id ASC, priority ASC, id ASC").Find(&rules).Error
+	return rules, err
+}
+
+func (r *FeatureRepo) FindRuleByID(id uint) (*model.FeatureTargetingRule, error) {
+	var rule model.FeatureTargetingRule
+	if err := DB.First(&rule, id).Error; err != nil {
+		return nil, err
+	}
+	return &rule, nil
+}
+
 func (r *FeatureRepo) CreateRule(rule *model.FeatureTargetingRule) error {
 	return DB.Create(rule).Error
 }
@@ -111,6 +186,24 @@ func (r *FeatureRepo) DeleteRule(id uint) error {
 
 func (r *FeatureRepo) CreateAuditLog(log *model.AuditLog) error {
 	return DB.Create(log).Error
+}
+
+func (r *FeatureRepo) ListAuditLogs(appID uint, targetType string, limit, offset int) ([]model.AuditLog, int64, error) {
+	var logs []model.AuditLog
+	var total int64
+	q := DB.Model(&model.AuditLog{})
+	if appID > 0 {
+		q = q.Where("app_id = ?", appID)
+	}
+	if targetType != "" {
+		q = q.Where("target_type = ?", targetType)
+	}
+	q.Count(&total)
+	if limit <= 0 {
+		limit = 50
+	}
+	err := q.Order("id DESC").Limit(limit).Offset(offset).Find(&logs).Error
+	return logs, total, err
 }
 
 // ---- UserFeatureOverride ----

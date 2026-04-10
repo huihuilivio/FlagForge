@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +11,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+const internalErr = "internal server error"
+
+func logAndAbort(c *gin.Context, status int, err error, msg string) {
+	log.Printf("[ERR] %s: %v", msg, err)
+	c.JSON(status, gin.H{"error": internalErr})
+}
 
 var svc = service.NewFeatureService()
 
@@ -39,7 +47,7 @@ func GetFeatures(c *gin.Context) {
 	}
 	result, err := svc.EvaluateFeatures(appKey, envKey, ctx)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logAndAbort(c, http.StatusInternalServerError, err, "EvaluateFeatures")
 		return
 	}
 	c.JSON(http.StatusOK, result)
@@ -57,7 +65,7 @@ func ListFeatures(c *gin.Context) {
 	}
 	features, err := svc.ListAll(appID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logAndAbort(c, http.StatusInternalServerError, err, "ListFeatures")
 		return
 	}
 	c.JSON(http.StatusOK, features)
@@ -68,11 +76,11 @@ func ListFeatures(c *gin.Context) {
 func CreateFeature(c *gin.Context) {
 	var f model.Feature
 	if err := c.ShouldBindJSON(&f); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 	if err := svc.Create(&f); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logAndAbort(c, http.StatusInternalServerError, err, "CreateFeature")
 		return
 	}
 	c.JSON(http.StatusCreated, f)
@@ -92,12 +100,12 @@ func UpdateFeature(c *gin.Context) {
 		return
 	}
 	if err := c.ShouldBindJSON(existing); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 	existing.ID = uint(id)
 	if err := svc.Update(existing); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logAndAbort(c, http.StatusInternalServerError, err, "UpdateFeature")
 		return
 	}
 	c.JSON(http.StatusOK, existing)
@@ -112,7 +120,7 @@ func DeleteFeature(c *gin.Context) {
 		return
 	}
 	if err := svc.Delete(uint(id)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logAndAbort(c, http.StatusInternalServerError, err, "DeleteFeature")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
@@ -125,7 +133,7 @@ func DeleteFeature(c *gin.Context) {
 func ListApps(c *gin.Context) {
 	apps, err := svc.ListApps()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logAndAbort(c, http.StatusInternalServerError, err, "ListApps")
 		return
 	}
 	c.JSON(http.StatusOK, apps)
@@ -136,14 +144,54 @@ func ListApps(c *gin.Context) {
 func CreateApp(c *gin.Context) {
 	var app model.App
 	if err := c.ShouldBindJSON(&app); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 	if err := svc.CreateApp(&app); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logAndAbort(c, http.StatusInternalServerError, err, "CreateApp")
 		return
 	}
 	c.JSON(http.StatusCreated, app)
+}
+
+// UpdateApp 更新应用
+// PUT /admin/app/:id
+func UpdateApp(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	existing, err := svc.GetAppByID(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "app not found"})
+		return
+	}
+	if err := c.ShouldBindJSON(existing); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	existing.ID = uint(id)
+	if err := svc.UpdateApp(existing); err != nil {
+		logAndAbort(c, http.StatusInternalServerError, err, "UpdateApp")
+		return
+	}
+	c.JSON(http.StatusOK, existing)
+}
+
+// DeleteApp 删除应用
+// DELETE /admin/app/:id
+func DeleteApp(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	if err := svc.DeleteApp(uint(id)); err != nil {
+		logAndAbort(c, http.StatusInternalServerError, err, "DeleteApp")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
 
 // ---------- 管理接口：Environment ----------
@@ -158,7 +206,7 @@ func ListEnvs(c *gin.Context) {
 	}
 	envs, err := svc.ListEnvs(uint(appID))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logAndAbort(c, http.StatusInternalServerError, err, "ListEnvs")
 		return
 	}
 	c.JSON(http.StatusOK, envs)
@@ -174,29 +222,93 @@ func CreateEnv(c *gin.Context) {
 	}
 	var env model.Environment
 	if err := c.ShouldBindJSON(&env); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 	env.AppID = uint(appID)
 	if err := svc.CreateEnv(&env); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logAndAbort(c, http.StatusInternalServerError, err, "CreateEnv")
 		return
 	}
 	c.JSON(http.StatusCreated, env)
 }
 
+// UpdateEnv 更新环境
+// PUT /admin/env/:id
+func UpdateEnv(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	existing, err := svc.GetEnvByID(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "env not found"})
+		return
+	}
+	if err := c.ShouldBindJSON(existing); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	existing.ID = uint(id)
+	if err := svc.UpdateEnv(existing); err != nil {
+		logAndAbort(c, http.StatusInternalServerError, err, "UpdateEnv")
+		return
+	}
+	c.JSON(http.StatusOK, existing)
+}
+
+// DeleteEnv 删除环境
+// DELETE /admin/env/:id
+func DeleteEnv(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	if err := svc.DeleteEnv(uint(id)); err != nil {
+		logAndAbort(c, http.StatusInternalServerError, err, "DeleteEnv")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
+}
+
 // ---------- 管理接口：Targeting Rule ----------
+
+// ListRules 列出定向规则
+// GET /admin/rules?app_id=1&env_id=1&feature_id=1
+func ListRules(c *gin.Context) {
+	var appID, envID, featureID uint
+	if v := c.Query("app_id"); v != "" {
+		n, _ := strconv.ParseUint(v, 10, 64)
+		appID = uint(n)
+	}
+	if v := c.Query("env_id"); v != "" {
+		n, _ := strconv.ParseUint(v, 10, 64)
+		envID = uint(n)
+	}
+	if v := c.Query("feature_id"); v != "" {
+		n, _ := strconv.ParseUint(v, 10, 64)
+		featureID = uint(n)
+	}
+	rules, err := svc.ListRules(appID, envID, featureID)
+	if err != nil {
+		logAndAbort(c, http.StatusInternalServerError, err, "ListRules")
+		return
+	}
+	c.JSON(http.StatusOK, rules)
+}
 
 // CreateRule 创建定向规则
 // POST /admin/rule
 func CreateRule(c *gin.Context) {
 	var rule model.FeatureTargetingRule
 	if err := c.ShouldBindJSON(&rule); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 	if err := svc.CreateRule(&rule); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logAndAbort(c, http.StatusInternalServerError, err, "CreateRule")
 		return
 	}
 	c.JSON(http.StatusCreated, rule)
@@ -212,12 +324,12 @@ func UpdateRule(c *gin.Context) {
 	}
 	var rule model.FeatureTargetingRule
 	if err := c.ShouldBindJSON(&rule); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 	rule.ID = uint(id)
 	if err := svc.UpdateRule(&rule); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logAndAbort(c, http.StatusInternalServerError, err, "UpdateRule")
 		return
 	}
 	c.JSON(http.StatusOK, rule)
@@ -232,10 +344,41 @@ func DeleteRule(c *gin.Context) {
 		return
 	}
 	if err := svc.DeleteRule(uint(id)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logAndAbort(c, http.StatusInternalServerError, err, "DeleteRule")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
+}
+
+// ---------- 管理接口：Audit Log ----------
+
+// ListAuditLogs 列出操作审计日志
+// GET /admin/audit-logs?app_id=1&target_type=feature&limit=50&offset=0
+func ListAuditLogs(c *gin.Context) {
+	var appID uint
+	if v := c.Query("app_id"); v != "" {
+		n, _ := strconv.ParseUint(v, 10, 64)
+		appID = uint(n)
+	}
+	targetType := c.Query("target_type")
+	limit := 50
+	offset := 0
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+	if v := c.Query("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+	logs, total, err := svc.ListAuditLogs(appID, targetType, limit, offset)
+	if err != nil {
+		logAndAbort(c, http.StatusInternalServerError, err, "ListAuditLogs")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": logs, "total": total})
 }
 
 // ---------- 用户接口：Feature Override ----------
@@ -245,7 +388,7 @@ func DeleteRule(c *gin.Context) {
 func SetOverride(c *gin.Context) {
 	var o model.UserFeatureOverride
 	if err := c.ShouldBindJSON(&o); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 	if o.UserID == "" || o.AppID == 0 || o.EnvID == 0 || o.FeatureID == 0 {
@@ -253,7 +396,7 @@ func SetOverride(c *gin.Context) {
 		return
 	}
 	if err := svc.UpsertOverride(&o); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logAndAbort(c, http.StatusInternalServerError, err, "SetOverride")
 		return
 	}
 	c.JSON(http.StatusOK, o)
@@ -271,7 +414,7 @@ func DeleteOverride(c *gin.Context) {
 		return
 	}
 	if err := svc.DeleteOverride(uint(appID), uint(envID), uint(featureID), userID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logAndAbort(c, http.StatusInternalServerError, err, "DeleteOverride")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "override deleted"})
@@ -289,7 +432,7 @@ func ListOverrides(c *gin.Context) {
 	}
 	overrides, err := svc.ListOverrides(uint(appID), uint(envID), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logAndAbort(c, http.StatusInternalServerError, err, "ListOverrides")
 		return
 	}
 	c.JSON(http.StatusOK, overrides)

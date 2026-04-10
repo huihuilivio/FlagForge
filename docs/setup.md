@@ -6,8 +6,8 @@
 |------|---------|------|
 | Go | >= 1.24 | 后端服务 |
 | Python 3 | >= 3.8 | 测试脚本（`pip install requests`） |
-| Node.js | >= 20 | Web 管理后台（开发中） |
-| CMake | >= 3.14 | C++ SDK 构建（开发中） |
+| Node.js | >= 20 | Web 管理后台 |
+| CMake | >= 3.14 | C++ SDK 构建 |
 | Docker / Docker Compose | 最新版 | 容器化部署（可选） |
 
 > **注意**: 本地开发使用 **SQLite**，无需安装 MySQL。数据库文件 `flagforge.db` 由 GORM AutoMigrate 自动创建。
@@ -75,8 +75,6 @@ go run .
 
 ### 2. 前端（React + Vite）
 
-> 开发中
-
 #### 安装 Node.js
 
 - Windows: `winget install OpenJS.NodeJS.LTS`
@@ -98,13 +96,11 @@ npm install
 npm run dev
 ```
 
-前端运行于 http://localhost:3000，API 请求自动代理到 :8080。
+前端运行于 http://localhost:5173，API 请求自动代理到 :8080。
 
 ---
 
 ### 3. C++ SDK
-
-> 开发中
 
 #### 安装工具链
 

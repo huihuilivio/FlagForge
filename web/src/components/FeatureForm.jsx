@@ -1,8 +1,5 @@
-import React from 'react';
-
-function FeatureForm() {
-  // TODO: 实现 Feature 编辑表单
-  return <div>Feature Form</div>;
+// Feature form is now integrated into FeatureList modal.
+// This file is kept for backward compatibility.
+export default function FeatureForm() {
+  return null;
 }
-
-export default FeatureForm;

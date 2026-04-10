@@ -20,10 +20,14 @@ func SetupRouter() *gin.Engine {
 		// App
 		admin.GET("/apps", ListApps)
 		admin.POST("/app", CreateApp)
+		admin.PUT("/app/:id", UpdateApp)
+		admin.DELETE("/app/:id", DeleteApp)
 
 		// Environment
 		admin.GET("/apps/:app_id/envs", ListEnvs)
 		admin.POST("/apps/:app_id/env", CreateEnv)
+		admin.PUT("/env/:id", UpdateEnv)
+		admin.DELETE("/env/:id", DeleteEnv)
 
 		// Feature
 		admin.GET("/features", ListFeatures)
@@ -32,9 +36,13 @@ func SetupRouter() *gin.Engine {
 		admin.DELETE("/feature/:id", DeleteFeature)
 
 		// Targeting Rule
+		admin.GET("/rules", ListRules)
 		admin.POST("/rule", CreateRule)
 		admin.PUT("/rule/:id", UpdateRule)
 		admin.DELETE("/rule/:id", DeleteRule)
+
+		// Audit Log
+		admin.GET("/audit-logs", ListAuditLogs)
 	}
 
 	return r
