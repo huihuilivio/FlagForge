@@ -124,19 +124,46 @@ cmake ..
 cmake --build .
 ```
 
-#### 构建示例
+#### 运行示例
+
+构建完成后会生成 `flagforge-example`，需要后端运行中：
 
 ```bash
-cd example/cpp
-g++ -std=c++17 -I ../../sdk/cpp/include main.cpp ../../sdk/cpp/src/feature_manager.cpp -o demo
-./demo
+./Debug/flagforge-example    # Windows (MSVC)
+./flagforge-example          # Linux/macOS
+```
+
+---
+
+### 4. C SDK
+
+C SDK 基于 C++ SDK 构建，无需额外依赖。
+
+#### 构建 SDK + 示例
+
+```bash
+cd sdk/c
+mkdir build && cd build
+cmake ..
+cmake --build .
+```
+
+构建产物：
+- `flagforge-c-sdk.lib`（静态库）
+- `flagforge-c-example`（可执行示例）
+
+#### 运行示例
+
+```bash
+./Debug/flagforge-c-example    # Windows (MSVC)
+./flagforge-c-example          # Linux/macOS
 ```
 
 ---
 
 ## 方式三：Docker Compose
 
-> **注意**: Docker Compose 配置使用 MySQL，当前后端代码仅实现了 SQLite 驱动。Docker 部署需要后续添加 MySQL 驱动支持。
+> **注意**: Docker Compose 使用 SQLite，数据存储在 Docker volume 中。
 
 ```bash
 cd FlagForge
@@ -145,8 +172,7 @@ docker compose -f deploy/docker-compose.yml up --build
 
 启动后：
 - 后端: http://localhost:8080
-- 前端: http://localhost:3000
-- MySQL: localhost:3306 (user: root, password: root, database: flagforge)
+- 前端: http://localhost:3000（nginx 反向代理，`/api/` 转发到后端）
 
 ```bash
 docker compose -f deploy/docker-compose.yml down
@@ -158,7 +184,7 @@ docker compose -f deploy/docker-compose.yml down
 
 ### Q: 后端启动时表结构怎么创建？
 
-GORM AutoMigrate 自动建表，无需手动执行 SQL。`deploy/init.sql` 和 `deploy/init-mysql.sql` 仅作为参考。
+GORM AutoMigrate 自动建表，无需手动执行 SQL。`deploy/init.sql` 仅作为参考。
 
 ### Q: 如何切换数据库文件路径？
 

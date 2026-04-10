@@ -78,11 +78,14 @@ FlagForge/
 │   └── cache/        # 缓存（预留）
 ├── web/              # React 管理后台（6 个页面）
 ├── sdk/
-│   └── cpp/          # C++ SDK
-├── deploy/           # Docker Compose + SQL
-├── scripts/          # 测试脚本
-├── docs/             # 文档
-└── example/          # 示例代码
+│   ├── cpp/          # C++ SDK (C++17, pimpl, 后台轮询, XOR 缓存)
+│   └── c/            # C SDK (C11, handle API, extern "C" 封装)
+├── example/
+│   ├── cpp/          # C++ 示例
+│   └── c/            # C 示例
+├── deploy/           # Docker Compose + nginx + init SQL
+├── scripts/          # 启动/测试脚本
+└── docs/             # 文档
 ```
 
 ---
@@ -240,187 +243,159 @@ App → Environment → Feature → TargetingRule
 
 ## 8. C++ SDK
 
-### 8.1 设计
+### 8.1 技术选型
 
-* 定期从后端拉取 feature 配置
-* 本地缓存（文件 + 内存）
-* 提供 `isEnabled()` / `getValue()` 接口
+| 组件 | 实现 |
+|------|------|
+| 语言标准 | C++17 |
+| 构建 | CMake >= 3.14 |
+| HTTP | cpp-httplib v0.41.0（header-only） |
+| JSON | nlohmann/json（header-only） |
+| 设计模式 | Pimpl（隐藏 Impl 类） + Singleton |
 
-### 8.2 状态
-
-接口已设计，实现开发中。
-
----
-
-## 9. 测试
-
-- 集成测试用例（`scripts/test_api.py`）
-- API 接口覆盖率：21/21（100%）
-- 测试脚本自动启动/关闭后端，支持 `--cover` 参数
-- 审计日志全覆盖：所有 CRUD 操作自动记录到 audit_logs
-
----
-
-## 8. C++ SDK 设计
-
-### 8.1 目录结构
+### 8.2 目录结构
 
 ```
 sdk/cpp/
-├── include/
+├── include/flagforge/
+│   └── feature_manager.h   # 公共头文件（仅 pimpl shell）
 ├── src/
-├── CMakeLists.txt
+│   └── feature_manager.cpp  # 完整实现（Impl 类）
+├── third_party/             # cpp-httplib + nlohmann/json
+└── CMakeLists.txt
 ```
 
----
-
-### 8.2 核心类
+### 8.3 核心类
 
 ```cpp
 class FeatureManager {
 public:
     static FeatureManager& instance();
 
-    void init(const std::string& url);
+    void init(const Config& config);
+    void init(const Config& config, const UserContext& ctx);
+    void setUserContext(const UserContext& ctx);
+    bool refresh();
 
-    bool isEnabled(const std::string& key);
-    std::string getValue(const std::string& key);
+    bool isEnabled(const std::string& key) const;
+    std::string getValue(const std::string& key) const;
+    FeatureResult getFeature(const std::string& key) const;
+    bool hasFeature(const std::string& key) const;
+    std::unordered_map<std::string, FeatureResult> getAllFeatures() const;
 
-private:
-    void loadLocalCache();
-    void fetchRemote();
-
-private:
-    std::unordered_map<std::string, bool> features_;
+    void onUpdate(UpdateCallback cb);
+    void shutdown();
 };
 ```
 
----
-
-### 8.3 初始化流程
+### 8.4 初始化流程
 
 ```
-启动
+init(config, userContext)
   ↓
-加载本地缓存
+加载本地缓存（XOR 解密 .dat 文件）
   ↓
-异步拉取远程配置
+拉取远程配置 → 更新内存 + XOR 加密写缓存
   ↓
-更新内存 + 写缓存
+启动后台轮询线程（每 N 秒拉取）
+  ↓
+每次更新后调用 onUpdate 回调
 ```
 
----
+### 8.5 容错设计
 
-### 8.4 本地缓存
+* 拉取失败 → 保留内存中的旧数据，stderr 输出错误
+* JSON 解析失败 → 忽略本次更新
+* 服务不可用 → 启动时从缓存文件加载兜底数据
+* CAS shutdown → `compare_exchange_strong` 防止重复 join 线程
 
-文件：
-
-```
-feature_cache.json
-```
-
-作用：
-
-* 服务不可用时兜底
-* 加快启动速度
-
----
-
-### 8.5 使用方式
+### 8.6 使用示例
 
 ```cpp
-if (FeatureManager::instance().isEnabled("new_ui")) {
-    // 新逻辑
-}
+auto& fm = flagforge::FeatureManager::instance();
+fm.init({.host="localhost", .port=8080, .app_key="my_app", .env_key="dev"});
+fm.onUpdate([]{ std::cout << "features updated\n"; });
 
-std::string theme = FeatureManager::instance().getValue("theme_color");
+if (fm.isEnabled("dark_mode")) { /* ... */ }
+std::string text = fm.getValue("welcome_text");
 ```
 
 ---
 
-## 9. 配置更新机制
+## 9. C SDK
 
-### 9.1 轮询（默认）
+### 9.1 设计
 
-* 每 10 秒拉取一次
+* 纯 C11 API，通过 `extern "C"` 封装 C++ FeatureManager
+* 不可变句柄模式（`ff_handle_t` = `struct ff_instance*`）
+* 线程安全：`ff_get_value` / `ff_get_feature` 使用独立字符串缓冲区
+
+### 9.2 目录结构
+
+```
+sdk/c/
+├── include/
+│   └── flagforge.h       # 纯 C 公共头文件
+├── src/
+│   └── flagforge.cpp     # C++ 编译的 extern "C" 实现
+└── CMakeLists.txt        # 引用 ../cpp 子目录
+```
+
+### 9.3 API 概览
+
+| 函数 | 说明 |
+|------|------|
+| `ff_create()` / `ff_destroy()` | 创建/销毁实例 |
+| `ff_init()` | 初始化（连接服务端） |
+| `ff_is_enabled()` | 查询开关 |
+| `ff_get_value()` | 获取值（返回 `const char*`） |
+| `ff_get_feature()` | 获取完整结果 |
+| `ff_foreach_feature()` | 遍历所有 feature |
+| `ff_on_update()` | 注册更新回调 |
+| `ff_refresh()` | 强制刷新 |
+| `ff_set_user_context()` | 更新用户上下文 |
+
+### 9.4 使用示例
+
+```c
+ff_handle_t ff = ff_create();
+ff_config_t cfg = ff_config_default();
+cfg.app_key = "my_app"; cfg.env_key = "dev";
+ff_init(ff, &cfg, NULL);
+
+if (ff_is_enabled(ff, "dark_mode")) { /* ... */ }
+printf("value = %s\n", ff_get_value(ff, "welcome_text"));
+
+ff_destroy(ff);
+```
 
 ---
 
-### 9.2 推送（进阶）
+## 10. 部署方案
 
-* WebSocket
-* SSE
-
----
-
-## 10. 容错设计
-
-* 拉取失败 → 使用缓存
-* JSON解析失败 → 忽略
-* 服务不可用 → 不影响业务
-
----
-
-## 11. 部署方案
-
-### 11.1 Docker Compose
+### 10.1 Docker Compose
 
 ```yaml
-version: '3'
 services:
   backend:
     build: ./backend
-    ports:
-      - "8080:8080"
+    ports: ["8080:8080"]
+    volumes: [backend_data:/app/data]
+    restart: unless-stopped
 
   web:
     build: ./web
-    ports:
-      - "3000:3000"
-
-  mysql:
-    image: mysql:8
+    ports: ["3000:3000"]
+    depends_on: [backend]
 ```
 
----
-
-## 12. 安全设计
-
-* 管理接口鉴权（JWT）
-* 操作日志记录
-* 权限控制（RBAC）
+Web 前端通过 nginx 反向代理，`/api/` 转发到 backend:8080。
 
 ---
 
-## 13. 日志与监控
+## 11. 扩展方向
 
-建议记录：
-
-* Feature命中日志
-* 灰度命中率
-* API调用情况
-
----
-
-## 14. 扩展方向
-
-### 14.1 A/B 测试
-
-```json
-{
-  "homepage": "A"
-}
-```
-
----
-
-### 14.2 实验平台
-
-* 曝光统计
-* 转化率分析
-
----
-
-### 14.3 AI 联动
-
-* 自动调节 Feature
+* **A/B 测试** — 基于 percentage + value 实现分流
+* **WebSocket / SSE 推送** — 替代轮询，实时更新
+* **RBAC 鉴权** — 管理接口 JWT 认证 + 角色权限
+* **多数据库** — 当前 SQLite，可扩展 MySQL/PostgreSQL

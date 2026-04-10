@@ -212,5 +212,4 @@ nullable 设计：被删除的 app/feature/env 不会导致审计记录丢失，
 ## SQL 脚本
 
 - 本地开发（SQLite）: `deploy/init.sql`
-- 生产环境（MySQL）: `deploy/init-mysql.sql`
 - Go 代码使用 GORM `AutoMigrate` 自动建表，SQL 脚本作为参考

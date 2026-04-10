@@ -11,12 +11,18 @@ FlagForge/
 │   ├── storage/      # 数据库操作（含级联删除）
 │   └── cache/        # 缓存（预留）
 ├── web/              # React 管理后台 (Vite 5 + Ant Design 5)
-│   └── src/pages/    # 6 个管理页面
+│   └── src/
+│       ├── pages/    # 6 个管理页面
+│       ├── components/  # 共享组件（RuleDrawer, ConditionEditor, ErrorBoundary）
+│       └── utils/    # 工具函数
 ├── sdk/
-│   └── cpp/          # C++ 客户端 SDK
-├── deploy/           # Docker Compose + SQL（MySQL 生产部署）
-├── scripts/          # 测试脚本
-├── example/          # 示例代码
+│   ├── cpp/          # C++ SDK (C++17, pimpl, 后台轮询, XOR 缓存)
+│   └── c/            # C SDK (C11, handle API, extern "C" 封装)
+├── example/
+│   ├── cpp/          # C++ SDK 示例
+│   └── c/            # C SDK 示例
+├── deploy/           # Docker Compose + nginx + init SQL
+├── scripts/          # 启动/测试脚本
 └── docs/             # 文档
     ├── design.md     # 架构设计
     ├── database.md   # 数据库设计
@@ -27,18 +33,17 @@ FlagForge/
 ## 快速开始
 
 ```bash
-# 自动启动后端 + 运行测试
-pip install requests
-python scripts/test_api.py
-
-# 带 Go 代码覆盖率
-python scripts/test_api.py --cover
-
-# 仅启动后端
+# 启动后端
 cd backend && go run .
 
-# 启动前端
+# 启动前端（另开终端）
 cd web && npm install && npm run dev
+
+# 构建 C++ SDK
+cd sdk/cpp && mkdir build && cd build && cmake .. && cmake --build .
+
+# 构建 C SDK
+cd sdk/c && mkdir build && cd build && cmake .. && cmake --build .
 ```
 
 ## 服务端口
