@@ -309,6 +309,8 @@ function FeatureQuery() {
               rowKey="key"
               columns={columns}
               dataSource={filteredResults}
+              tableLayout="fixed"
+              scroll={{ x: 500 }}
               pagination={filteredResults && filteredResults.length > 20 ? { pageSize: 20, showSizeChanger: true, showTotal: (t) => `共 ${t} 项` } : false}
               size="middle"
               locale={{ emptyText: <Empty description="无匹配 Feature" /> }}

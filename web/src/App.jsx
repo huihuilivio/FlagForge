@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { ConfigProvider, Layout, Menu, theme } from 'antd';
 import {
@@ -9,7 +9,6 @@ import {
   AuditOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
-import { getApps, getEnvs } from './api/feature';
 import AppManage from './pages/AppManage';
 import EnvManage from './pages/EnvManage';
 import FeatureList from './pages/FeatureList';
@@ -31,36 +30,11 @@ const themeConfig = {
   algorithm: theme.defaultAlgorithm,
 };
 
-/* ============ Context：App + Env 全局状态 ============ */
-export const AppContext = React.createContext(null);
+/* ============ Context：App + Env 全局状态（已废弃，各页面自管理） ============ */
 
 function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-
-  const [apps, setApps] = useState([]);
-  const [currentApp, setCurrentApp] = useState(null);
-  const [envs, setEnvs] = useState([]);
-  const [currentEnv, setCurrentEnv] = useState(null);
-
-  const loadApps = async () => {
-    try {
-      const { data } = await getApps();
-      setApps(data || []);
-    } catch { /* ignore */ }
-  };
-
-  const loadEnvs = async (appId) => {
-    if (!appId) return;
-    try {
-      const { data } = await getEnvs(appId);
-      setEnvs(data || []);
-      setCurrentEnv(null);
-    } catch { /* ignore */ }
-  };
-
-  useEffect(() => { loadApps(); }, []);
-  useEffect(() => { if (currentApp) loadEnvs(currentApp.id); }, [currentApp]);
 
   const menuItems = [
     { key: '/apps', icon: <AppstoreOutlined />, label: '应用管理' },
@@ -78,8 +52,7 @@ function AppLayout() {
     : '/apps';
 
   return (
-    <AppContext.Provider value={{ currentApp, currentEnv, envs, apps, loadApps, loadEnvs, setCurrentApp, setCurrentEnv }}>
-      <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ minHeight: '100vh' }}>
         {/* 侧边栏 */}
         <Sider width={240} style={{ background: '#fff8ee', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '20px 16px 12px', textAlign: 'center' }}>
@@ -125,7 +98,6 @@ function AppLayout() {
           </Content>
         </Layout>
       </Layout>
-    </AppContext.Provider>
   );
 }
 

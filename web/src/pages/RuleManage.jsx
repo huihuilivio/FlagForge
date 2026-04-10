@@ -153,10 +153,11 @@ function RuleManage() {
       title: 'Feature',
       dataIndex: 'feature_id',
       width: 160,
+      ellipsis: true,
       render: (id) => {
         const f = featureMap[id];
         return f
-          ? <Text strong style={{ color: '#bf6c00' }}>{f.key_name}</Text>
+          ? <Text strong style={{ color: '#bf6c00' }} ellipsis={{ tooltip: f.key_name }}>{f.key_name}</Text>
           : <Text type="secondary">#{id}</Text>;
       },
       filters: features.map(f => ({ text: f.key_name, value: f.id })),
@@ -165,9 +166,10 @@ function RuleManage() {
     {
       title: '环境',
       dataIndex: 'env',
-      width: 100,
+      width: 130,
+      ellipsis: true,
       render: (env) => env
-        ? <Tag color="blue">{env.name || env.env_key}</Tag>
+        ? <Tooltip title={env.name || env.env_key}><Tag color="blue" style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{env.name || env.env_key}</Tag></Tooltip>
         : <Text type="secondary">—</Text>,
     },
     {
@@ -292,6 +294,8 @@ function RuleManage() {
           columns={columns}
           dataSource={rules}
           loading={loading}
+          tableLayout="fixed"
+          scroll={{ x: 850 }}
           pagination={rules.length > 15 ? { pageSize: 15, showSizeChanger: true, showTotal: (t) => `共 ${t} 项` } : false}
           size="middle"
           locale={{ emptyText: <Empty description="暂无规则" /> }}

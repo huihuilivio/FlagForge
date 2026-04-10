@@ -86,10 +86,11 @@ function EnvManage() {
       title: '环境标识',
       dataIndex: 'env_key',
       width: 150,
+      ellipsis: true,
       render: (text) => (
         <Space>
           <CloudServerOutlined style={{ color: '#1890ff' }} />
-          <Text strong style={{ color: '#1890ff' }}>{text}</Text>
+          <Text strong style={{ color: '#1890ff' }} ellipsis={{ tooltip: text }}>{text}</Text>
         </Space>
       ),
     },
@@ -97,7 +98,8 @@ function EnvManage() {
       title: '环境名称',
       dataIndex: 'name',
       width: 180,
-      render: (text) => text || <Text type="secondary">—</Text>,
+      ellipsis: true,
+      render: (text) => text ? <Text ellipsis={{ tooltip: text }}>{text}</Text> : <Text type="secondary">—</Text>,
     },
     {
       title: '生产环境',
@@ -171,6 +173,8 @@ function EnvManage() {
           columns={columns}
           dataSource={envs}
           loading={loading}
+          tableLayout="fixed"
+          scroll={{ x: 800 }}
           pagination={false}
           locale={{ emptyText: <Empty description="暂无环境，点击「新建环境」开始配置" /> }}
         />

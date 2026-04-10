@@ -97,10 +97,11 @@ function AppManage() {
       title: '应用标识',
       dataIndex: 'app_key',
       width: 160,
+      ellipsis: true,
       render: (text) => (
         <Space>
           <AppstoreOutlined style={{ color: '#f5a623' }} />
-          <Text strong style={{ color: '#bf6c00' }}>{text}</Text>
+          <Text strong style={{ color: '#bf6c00' }} ellipsis={{ tooltip: text }}>{text}</Text>
         </Space>
       ),
     },
@@ -108,7 +109,8 @@ function AppManage() {
       title: '应用名称',
       dataIndex: 'name',
       width: 180,
-      render: (text) => <Text strong>{text}</Text>,
+      ellipsis: true,
+      render: (text) => <Text strong ellipsis={{ tooltip: text }}>{text}</Text>,
     },
     {
       title: '描述',
@@ -203,6 +205,8 @@ function AppManage() {
           columns={columns}
           dataSource={apps}
           loading={loading}
+          tableLayout="fixed"
+          scroll={{ x: 900 }}
           pagination={apps.length > 10 ? { pageSize: 10, showSizeChanger: true } : false}
           locale={{ emptyText: <Empty description="暂无应用，点击「新建应用」创建第一个" /> }}
         />

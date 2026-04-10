@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Table, Card, Tag, Space, Typography, Empty, Select, Button, Tooltip,
   Row, Col, Statistic,
@@ -7,8 +7,7 @@ import {
   ReloadOutlined, AuditOutlined, FileTextOutlined,
   AppstoreOutlined, CloudServerOutlined, ExperimentOutlined, AimOutlined,
 } from '@ant-design/icons';
-import { AppContext } from '../App';
-import { getAuditLogs } from '../api/feature';
+import { getApps, getAuditLogs } from '../api/feature';
 
 const { Text } = Typography;
 
@@ -39,7 +38,8 @@ const TARGET_LABELS = {
 };
 
 function AuditLogPage() {
-  const { currentApp } = useContext(AppContext);
+  const [apps, setApps] = useState([]);
+  const [selectedApp, setSelectedApp] = useState(null);
   const [logs, setLogs] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -47,11 +47,15 @@ function AuditLogPage() {
   const [pageSize, setPageSize] = useState(20);
   const [filterType, setFilterType] = useState(null);
 
+  useEffect(() => {
+    getApps().then(({ data }) => setApps(data || [])).catch(() => {});
+  }, []);
+
   const load = async (p = page, ps = pageSize) => {
     setLoading(true);
     try {
       const params = { limit: ps, offset: (p - 1) * ps };
-      if (currentApp) params.app_id = currentApp.id;
+      if (selectedApp) params.app_id = selectedApp.id;
       if (filterType) params.target_type = filterType;
       const { data } = await getAuditLogs(params);
       setLogs(data.data || []);
@@ -62,7 +66,7 @@ function AuditLogPage() {
     setLoading(false);
   };
 
-  useEffect(() => { setPage(1); load(1); }, [currentApp, filterType]);
+  useEffect(() => { setPage(1); load(1); }, [selectedApp, filterType]);
   useEffect(() => { load(); }, [page, pageSize]);
 
   // 统计
@@ -113,7 +117,8 @@ function AuditLogPage() {
       title: '操作者',
       dataIndex: 'operator',
       width: 100,
-      render: (t) => t || <Text type="secondary">system</Text>,
+      ellipsis: true,
+      render: (t) => t ? <Text ellipsis={{ tooltip: t }}>{t}</Text> : <Text type="secondary">system</Text>,
     },
     {
       title: '详情',
@@ -170,11 +175,19 @@ function AuditLogPage() {
 
       <Card
         title={
-          <span>
-            <AuditOutlined style={{ color: '#f5a623', marginRight: 8 }} />
-            操作审计
-            {currentApp && <Text type="secondary"> — {currentApp.name || currentApp.app_key}</Text>}
-          </span>
+          <Space>
+            <AuditOutlined style={{ color: '#f5a623' }} />
+            <span>操作审计</span>
+            <Select
+              style={{ width: 160 }}
+              value={selectedApp?.id}
+              placeholder="全部应用"
+              allowClear
+              options={apps.map(a => ({ value: a.id, label: a.name || a.app_key }))}
+              onChange={(id) => setSelectedApp(id ? apps.find(a => a.id === id) : null)}
+              suffixIcon={<AppstoreOutlined />}
+            />
+          </Space>
         }
         extra={
           <Space>
@@ -202,6 +215,8 @@ function AuditLogPage() {
           columns={columns}
           dataSource={logs}
           loading={loading}
+          tableLayout="fixed"
+          scroll={{ x: 800 }}
           pagination={{
             current: page,
             pageSize: pageSize,
@@ -218,7 +233,6 @@ function AuditLogPage() {
       <div style={{ marginTop: 16, padding: '12px 16px', background: '#f6ffed', borderRadius: 8, border: '1px solid #b7eb8f' }}>
         <Text type="secondary" style={{ fontSize: 13 }}>
           💡 所有管理操作（创建/更新/删除 应用、环境、特性、规则）都会自动记录审计日志。
-          {!currentApp && ' 选择应用可筛选该应用的操作记录。'}
         </Text>
       </div>
     </div>

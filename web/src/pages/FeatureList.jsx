@@ -122,11 +122,12 @@ function FeatureList() {
     {
       title: 'Feature Key',
       dataIndex: 'key_name',
+      ellipsis: true,
       sorter: (a, b) => a.key_name.localeCompare(b.key_name),
       render: (text) => (
         <Space>
           <ExperimentOutlined style={{ color: '#f5a623' }} />
-          <Text strong style={{ color: '#bf6c00' }}>{text}</Text>
+          <Text strong style={{ color: '#bf6c00' }} ellipsis={{ tooltip: text }}>{text}</Text>
         </Space>
       ),
     },
@@ -264,6 +265,8 @@ function FeatureList() {
           columns={columns}
           dataSource={features}
           loading={loading}
+          tableLayout="fixed"
+          scroll={{ x: 900 }}
           pagination={features.length > 15 ? { pageSize: 15, showSizeChanger: true, showTotal: (t) => `共 ${t} 项` } : false}
           locale={{ emptyText: <Empty description="暂无 Feature，点击「新建 Feature」创建" /> }}
         />
