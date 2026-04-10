@@ -53,6 +53,9 @@ backend/tmp/
 # C++ SDK build
 sdk/cpp/build/
 
+# C SDK build
+sdk/c/build/
+
 # SDK cache
 feature_cache.*
 
