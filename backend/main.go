@@ -1,17 +1,53 @@
 package main
 
 import (
+	"context"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	"github.com/livio/flagforge/backend/api"
-	"github.com/livio/flagforge/backend/storage"
+	"goflagforge/api"
+	"goflagforge/storage"
 )
 
 func main() {
-	if err := storage.InitDB("flagforge.db"); err != nil {
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "flagforge.db"
+	}
+
+	if err := storage.InitDB(dbPath); err != nil {
 		log.Fatal("failed to init database:", err)
 	}
 
 	r := api.SetupRouter()
-	r.Run(":8080")
+
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: r,
+	}
+
+	// 优雅关闭：收到信号后 graceful shutdown，确保 coverage 数据刷写
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal("listen:", err)
+		}
+	}()
+
+	log.Println("server started on :8080")
+	<-quit
+	log.Println("shutting down server…")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal("server forced to shutdown:", err)
+	}
+	log.Println("server exited")
 }

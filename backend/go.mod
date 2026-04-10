@@ -1,4 +1,4 @@
-module github.com/livio/flagforge/backend
+module goflagforge
 
 go 1.24.0
 

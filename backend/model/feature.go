@@ -36,21 +36,21 @@ type Feature struct {
 	TargetingRules []FeatureTargetingRule `json:"targeting_rules,omitempty" gorm:"foreignKey:FeatureID"`
 }
 
-// FeatureTargetingRule 定向规则（统一基线、白名单、用户覆盖、灰度、版本等）
-// 求值：按 Priority ASC 逐条匹配，首条命中即终止并返回结果
-// UNIQUE(feature_id, env_id, priority) 保证同环境下无优先级冲突
-// match_type=all 作为最低优先级的基线规则（替代原 feature_rules）
+// FeatureTargetingRule 定向规则（多条件组合 AND/OR 求值）
+// DB 只负责按 feature_id + env_id 存取、按 priority 排序
+// conditions JSON 仅在应用层解析求值，不参与 SQL 查询
+// 求值：按 Priority ASC, ID ASC 逐条匹配，首条命中即终止并返回结果
+// conditions=[] 空数组作为 match-all 基线规则
 type FeatureTargetingRule struct {
 	ID         uint         `json:"id" gorm:"primaryKey;autoIncrement"`
-	FeatureID  uint         `json:"feature_id" gorm:"uniqueIndex:uk_targeting_priority;not null"`
-	EnvID      uint         `json:"env_id" gorm:"uniqueIndex:uk_targeting_priority;not null"`
+	FeatureID  uint         `json:"feature_id" gorm:"index:idx_targeting_fe;not null"`
+	EnvID      uint         `json:"env_id" gorm:"index:idx_targeting_fe;not null"`
 	Name       string       `json:"name" gorm:"size:100"`
-	Priority   int          `json:"priority" gorm:"uniqueIndex:uk_targeting_priority;not null;default:0"`
+	Priority   int          `json:"priority" gorm:"index:idx_targeting_fe;not null;default:0"`
 	Active     bool         `json:"active" gorm:"not null;default:true"`
-	MatchType  string       `json:"match_type" gorm:"size:30;not null"`
-	MatchValue string       `json:"match_value" gorm:"type:text"`
+	Conditions string       `json:"conditions" gorm:"type:text;not null;default:'[]'"`
 	Enabled    bool         `json:"enabled" gorm:"default:false"`
-	Value      string       `json:"value" gorm:"size:500"`
+	Value      string       `json:"value" gorm:"type:text"`
 	CreatedAt  time.Time    `json:"created_at"`
 	UpdatedAt  time.Time    `json:"updated_at"`
 	Env        *Environment `json:"env,omitempty" gorm:"foreignKey:EnvID"`
@@ -67,4 +67,18 @@ type AuditLog struct {
 	TargetID   uint      `json:"target_id" gorm:"not null"`
 	Detail     string    `json:"detail" gorm:"type:json"`
 	CreatedAt  time.Time `json:"created_at"`
+}
+
+// UserFeatureOverride 用户级 feature 覆盖
+// 优先级最高：用户覆盖 > 定向规则 > 基线规则
+type UserFeatureOverride struct {
+	ID        uint      `json:"id" gorm:"primaryKey;autoIncrement"`
+	AppID     uint      `json:"app_id" gorm:"uniqueIndex:uk_user_override;not null"`
+	EnvID     uint      `json:"env_id" gorm:"uniqueIndex:uk_user_override;not null"`
+	FeatureID uint      `json:"feature_id" gorm:"uniqueIndex:uk_user_override;not null"`
+	UserID    string    `json:"user_id" gorm:"uniqueIndex:uk_user_override;size:100;not null"`
+	Enabled   bool      `json:"enabled" gorm:"not null;default:false"`
+	Value     string    `json:"value" gorm:"type:text"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

@@ -4,7 +4,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/livio/flagforge/backend/model"
+	"goflagforge/model"
 )
 
 var DB *gorm.DB
@@ -23,6 +23,7 @@ func InitDB(dbPath string) error {
 		&model.Feature{},
 		&model.FeatureTargetingRule{},
 		&model.AuditLog{},
+		&model.UserFeatureOverride{},
 	)
 	if err != nil {
 		return err

@@ -41,9 +41,9 @@ CREATE TABLE IF NOT EXISTS features (
     UNIQUE (app_id, key_name)
 );
 
--- 定向规则表（统一基线、白名单、用户覆盖、灰度、版本定向等）
--- 求值：按 priority ASC 逐条匹配，首条命中即终止并返回结果
--- match_type=all 作为最低优先级的基线规则
+-- 定向规则表（多条件组合 AND/OR 求值）
+-- DB 职责：按 feature_id + env_id 存取，按 priority 排序
+-- 规则匹配在应用层完成，conditions 列不参与 SQL 查询
 CREATE TABLE IF NOT EXISTS feature_targeting_rules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     feature_id INTEGER NOT NULL REFERENCES features(id) ON DELETE CASCADE,
@@ -51,13 +51,26 @@ CREATE TABLE IF NOT EXISTS feature_targeting_rules (
     name TEXT DEFAULT '',                        -- 规则名称，如 "VIP用户强制开启"
     priority INTEGER NOT NULL DEFAULT 0,         -- 数值越小优先级越高
     active BOOLEAN NOT NULL DEFAULT 1,            -- 规则开关，0=跳过此规则
-    match_type TEXT NOT NULL,                    -- user_list / percentage / version / all
-    match_value TEXT DEFAULT '',                  -- JSON: ["alice","bob"] / 30 / ">=2.0.0" / null
+    conditions TEXT NOT NULL DEFAULT '[]',        -- 条件树，支持 and/or 嵌套；裸数组=隐式AND；[]=match-all
     enabled BOOLEAN NOT NULL DEFAULT 0,          -- 命中后是否开启
-    value TEXT DEFAULT '',                       -- 命中后的值（string/json 类型使用）
+    value TEXT DEFAULT '',                       -- 命中后的值（boolean/string/json 均存为文本）
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_targeting_fe ON feature_targeting_rules (feature_id, env_id, priority);
+
+-- 用户级 feature 覆盖（优先级最高：用户覆盖 > 定向规则 > 基线规则）
+CREATE TABLE IF NOT EXISTS user_feature_overrides (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    app_id INTEGER NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+    env_id INTEGER NOT NULL REFERENCES environments(id) ON DELETE CASCADE,
+    feature_id INTEGER NOT NULL REFERENCES features(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT 0,
+    value TEXT DEFAULT '',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (feature_id, env_id, priority)        -- 同环境下优先级不可重复
+    UNIQUE (app_id, env_id, feature_id, user_id)
 );
 
 -- 操作审计日志
@@ -79,7 +92,6 @@ CREATE INDEX IF NOT EXISTS idx_audit_feature ON audit_logs (feature_id);
 CREATE INDEX IF NOT EXISTS idx_audit_env ON audit_logs (env_id);
 CREATE INDEX IF NOT EXISTS idx_audit_target ON audit_logs (target_type, target_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs (created_at);
-CREATE INDEX IF NOT EXISTS idx_targeting_feature_env ON feature_targeting_rules (feature_id, env_id, priority);
 
 -- ============================================================
 -- MySQL 版本（生产环境）见 deploy/init-mysql.sql
