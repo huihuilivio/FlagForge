@@ -1,5 +1,5 @@
 import React from 'react';
-import { Result, Button } from 'antd';
+import { Result, Button, Space } from 'antd';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -23,9 +23,14 @@ class ErrorBoundary extends React.Component {
           title="页面出错了"
           subTitle={this.state.error?.message || '未知错误'}
           extra={
-            <Button type="primary" onClick={() => this.setState({ hasError: false, error: null })}>
-              重试
-            </Button>
+            <Space>
+              <Button type="primary" onClick={() => this.setState({ hasError: false, error: null })}>
+                重试
+              </Button>
+              <Button onClick={() => window.location.reload()}>
+                刷新页面
+              </Button>
+            </Space>
           }
         />
       );

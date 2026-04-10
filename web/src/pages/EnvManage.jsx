@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Table, Button, Modal, Form, Input, InputNumber, Switch, Space, Popconfirm,
   Card, Tag, message, Typography, Empty, Tooltip, Select,
@@ -19,6 +19,7 @@ function EnvManage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form] = Form.useForm();
+  const loadIdRef = useRef(0);
 
   useEffect(() => {
     getApps().then(({ data }) => setApps(data || [])).catch(() => {});
@@ -26,11 +27,14 @@ function EnvManage() {
 
   const load = async () => {
     if (!selectedApp) { setEnvs([]); return; }
+    const id = ++loadIdRef.current;
     setLoading(true);
     try {
       const { data } = await getEnvs(selectedApp.id);
+      if (loadIdRef.current !== id) return;
       setEnvs(data || []);
     } catch {
+      if (loadIdRef.current !== id) return;
       message.error('加载环境列表失败');
     }
     setLoading(false);

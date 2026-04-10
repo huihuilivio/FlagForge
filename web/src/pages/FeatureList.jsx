@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Table, Button, Modal, Form, Input, Select, Tag, Space, Popconfirm,
   message, Card, Typography, Badge, Empty, Tooltip, Row, Col, Statistic,
@@ -40,6 +40,7 @@ function FeatureList() {
   // Rule drawer
   const [ruleDrawerOpen, setRuleDrawerOpen] = useState(false);
   const [ruleFeature, setRuleFeature] = useState(null);
+  const loadIdRef = useRef(0);
 
   useEffect(() => {
     getApps().then(({ data }) => setApps(data || [])).catch(() => {});
@@ -55,11 +56,14 @@ function FeatureList() {
 
   const load = async () => {
     if (!selectedApp) return;
+    const id = ++loadIdRef.current;
     setLoading(true);
     try {
       const { data } = await getFeatures(selectedApp.id);
+      if (loadIdRef.current !== id) return;
       setFeatures(data || []);
     } catch {
+      if (loadIdRef.current !== id) return;
       message.error('加载 Feature 失败');
     }
     setLoading(false);

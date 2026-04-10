@@ -46,7 +46,7 @@ typedef struct ff_user_context {
     const char*     user_id;
     const char*     version;
     const char*     platform;
-    const ff_attr_t* attrs;          /* array of key-value pairs, end with {NULL,NULL} */
+    const ff_attr_t* attrs;          /* array of key-value pairs */
     size_t          attr_count;      /* number of attrs (ignored if attrs==NULL) */
 } ff_user_context_t;
 

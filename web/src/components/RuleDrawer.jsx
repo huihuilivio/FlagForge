@@ -8,6 +8,7 @@ import {
 } from '@ant-design/icons';
 import { createRule, updateRule, deleteRule } from '../api/feature';
 import ConditionEditor from './ConditionEditor';
+import { parseConditions } from '../utils/conditions';
 
 const { Text } = Typography;
 
@@ -40,18 +41,9 @@ function RuleDrawer({ open, feature, envId, onClose }) {
       value: record.value,
     });
     // 解析 conditions
-    try {
-      const parsed = JSON.parse(record.conditions || '[]');
-      if (Array.isArray(parsed)) {
-        setConditions(parsed);
-      } else if (parsed.op && parsed.items) {
-        setConditions(parsed.items);
-      } else {
-        setConditions([parsed]);
-      }
-    } catch {
-      setConditions([]);
-    }
+    const { conditions: parsed, error } = parseConditions(record.conditions);
+    if (error) message.warning('条件数据解析失败，已重置为空');
+    setConditions(parsed);
     setModalOpen(true);
   };
 
@@ -219,24 +211,19 @@ function RuleDrawer({ open, feature, envId, onClose }) {
 
 /* 条件摘要显示 */
 function ConditionSummary({ conditions }) {
-  try {
-    const parsed = JSON.parse(conditions || '[]');
-    const items = Array.isArray(parsed) ? parsed : (parsed.items || [parsed]);
-    if (items.length === 0) return <Text type="secondary">match all</Text>;
+  const { conditions: items } = parseConditions(conditions);
+  if (items.length === 0) return <Text type="secondary">match all</Text>;
 
-    return (
-      <Space size={4} wrap>
-        {items.slice(0, 3).map((c, i) => {
-          if (c.op) return <Tag key={i} color="blue">{c.op.toUpperCase()}(...)</Tag>;
-          const label = c.type || '?';
-          return <Tag key={i} color="geekblue">{label}</Tag>;
-        })}
-        {items.length > 3 && <Text type="secondary">+{items.length - 3}</Text>}
-      </Space>
-    );
-  } catch {
-    return <Text type="secondary">—</Text>;
-  }
+  return (
+    <Space size={4} wrap>
+      {items.slice(0, 3).map((c, i) => {
+        if (c.op) return <Tag key={i} color="blue">{c.op.toUpperCase()}(...)</Tag>;
+        const label = c.type || '?';
+        return <Tag key={i} color="geekblue">{label}</Tag>;
+      })}
+      {items.length > 3 && <Text type="secondary">+{items.length - 3}</Text>}
+    </Space>
+  );
 }
 
 export default RuleDrawer;

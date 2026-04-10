@@ -9,7 +9,6 @@
 
 #include <string>
 #include <cstring>
-#include <vector>
 #include <mutex>
 
 /* ---- Internal instance structure ---- */
@@ -20,7 +19,8 @@ struct ff_instance {
 
     /* Stable storage for strings returned to C callers */
     mutable std::mutex      str_mutex;
-    mutable std::string     last_value;   /* getValue return buffer */
+    mutable std::string     last_get_value;     /* ff_get_value return buffer */
+    mutable std::string     last_feature_value; /* ff_get_feature return buffer */
 
     ff_update_callback_t    c_callback;
     void*                   c_user_data;
@@ -127,23 +127,19 @@ bool ff_is_enabled(ff_handle_t ff, const char* key) {
 const char* ff_get_value(ff_handle_t ff, const char* key) {
     if (!ff || !key) return "";
     std::lock_guard<std::mutex> lock(ff->str_mutex);
-    ff->last_value = ff->mgr->getValue(key);
-    return ff->last_value.c_str();
+    ff->last_get_value = ff->mgr->getValue(key);
+    return ff->last_get_value.c_str();
 }
 
 int ff_get_feature(ff_handle_t ff, const char* key, ff_feature_t* out) {
     if (!ff || !key || !out) return FF_ERR_NULL;
+    if (!ff->mgr->hasFeature(key)) return FF_ERR;
     auto fr = ff->mgr->getFeature(key);
-    /* Feature not found: enabled=false and value="" is the default.
-       We distinguish "not found" by checking if the key actually exists. */
-    auto all = ff->mgr->getAllFeatures();
-    if (all.find(key) == all.end()) return FF_ERR;
-
     out->enabled = fr.enabled;
-    /* Store value in stable buffer */
+    /* Store value in separate stable buffer */
     std::lock_guard<std::mutex> lock(ff->str_mutex);
-    ff->last_value = fr.value;
-    out->value = ff->last_value.c_str();
+    ff->last_feature_value = fr.value;
+    out->value = ff->last_feature_value.c_str();
     return FF_OK;
 }
 

@@ -61,6 +61,11 @@ public:
         return it != features_.end() ? it->second.value : "";
     }
 
+    bool hasFeature(const std::string& key) const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return features_.count(key) > 0;
+    }
+
     FeatureResult getFeature(const std::string& key) const {
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = features_.find(key);
@@ -258,6 +263,7 @@ void FeatureManager::init(const Config& config, const UserContext& ctx) { impl_-
 void FeatureManager::setUserContext(const UserContext& ctx) { impl_->setUserContext(ctx); }
 bool FeatureManager::refresh() { return impl_->refresh(); }
 bool FeatureManager::isEnabled(const std::string& key) const { return impl_->isEnabled(key); }
+bool FeatureManager::hasFeature(const std::string& key) const { return impl_->hasFeature(key); }
 std::string FeatureManager::getValue(const std::string& key) const { return impl_->getValue(key); }
 FeatureResult FeatureManager::getFeature(const std::string& key) const { return impl_->getFeature(key); }
 std::unordered_map<std::string, FeatureResult> FeatureManager::getAllFeatures() const { return impl_->getAllFeatures(); }

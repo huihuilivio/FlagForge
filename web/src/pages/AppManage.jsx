@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Table, Button, Modal, Form, Input, Space, Popconfirm, Card, Tag,
   message, Typography, Empty, Statistic, Row, Col, Tooltip,
@@ -18,11 +18,14 @@ function AppManage() {
   const [editing, setEditing] = useState(null);
   const [form] = Form.useForm();
   const [stats, setStats] = useState({}); // { appId: { envCount, featureCount } }
+  const loadIdRef = useRef(0);
 
   const load = async () => {
+    const id = ++loadIdRef.current;
     setLoading(true);
     try {
       const { data } = await getApps();
+      if (loadIdRef.current !== id) return;
       const list = data || [];
       setApps(list);
       // 并行加载每个 app 的统计
@@ -43,8 +46,10 @@ function AppManage() {
           }
         })
       );
+      if (loadIdRef.current !== id) return;
       setStats(statsMap);
     } catch {
+      if (loadIdRef.current !== id) return;
       message.error('加载应用列表失败');
     }
     setLoading(false);

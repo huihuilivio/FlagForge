@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Table, Button, Modal, Form, Input, InputNumber, Switch, Select,
   Space, Popconfirm, Card, Tag, message, Typography, Empty, Tooltip,
@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import { getApps, getEnvs, getRules, getFeatures, createRule, updateRule, deleteRule } from '../api/feature';
 import ConditionEditor from '../components/ConditionEditor';
+import { parseConditions } from '../utils/conditions';
 
 const { Text } = Typography;
 
@@ -26,6 +27,7 @@ function RuleManage() {
   const [editing, setEditing] = useState(null);
   const [conditions, setConditions] = useState([]);
   const [form] = Form.useForm();
+  const loadIdRef = useRef(0);
 
   // 筛选
   const [filterFeatureId, setFilterFeatureId] = useState(null);
@@ -44,14 +46,17 @@ function RuleManage() {
 
   const load = async () => {
     if (!selectedApp) { setRules([]); return; }
+    const id = ++loadIdRef.current;
     setLoading(true);
     try {
       const params = { app_id: selectedApp.id };
       if (selectedEnv) params.env_id = selectedEnv.id;
       if (filterFeatureId) params.feature_id = filterFeatureId;
       const { data } = await getRules(params);
+      if (loadIdRef.current !== id) return;
       setRules(data || []);
     } catch {
+      if (loadIdRef.current !== id) return;
       message.error('加载规则列表失败');
     }
     setLoading(false);
@@ -122,12 +127,9 @@ function RuleManage() {
       enabled: record.enabled,
       value: record.value,
     });
-    try {
-      const parsed = JSON.parse(record.conditions || '[]');
-      if (Array.isArray(parsed)) setConditions(parsed);
-      else if (parsed.op && parsed.items) setConditions(parsed.items);
-      else setConditions([parsed]);
-    } catch { setConditions([]); }
+    const { conditions: parsed, error } = parseConditions(record.conditions);
+    if (error) message.warning('条件数据解析失败，已重置为空');
+    setConditions(parsed);
     setModalOpen(true);
   };
 
@@ -210,13 +212,10 @@ function RuleManage() {
       width: 80,
       align: 'center',
       render: (_, r) => {
-        try {
-          const parsed = JSON.parse(r.conditions || '[]');
-          const items = Array.isArray(parsed) ? parsed : (parsed.items || []);
-          return items.length === 0
-            ? <Text type="secondary">match-all</Text>
-            : <Badge count={items.length} style={{ backgroundColor: '#f5a623' }} />;
-        } catch { return '—'; }
+        const { conditions: items } = parseConditions(r.conditions);
+        return items.length === 0
+          ? <Text type="secondary">match-all</Text>
+          : <Badge count={items.length} style={{ backgroundColor: '#f5a623' }} />;
       },
     },
     {

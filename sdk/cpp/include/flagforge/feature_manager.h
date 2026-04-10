@@ -57,6 +57,9 @@ public:
     /// Query the value of a feature (string / json types).
     std::string getValue(const std::string& key) const;
 
+    /// Check whether a feature key exists in the local cache.
+    bool hasFeature(const std::string& key) const;
+
     /// Get the full evaluation result for a feature.
     FeatureResult getFeature(const std::string& key) const;
 

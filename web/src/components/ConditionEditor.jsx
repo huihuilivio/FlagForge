@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Select, Input, InputNumber, Space, Card, Tag, Typography } from 'antd';
+import { Button, Select, Input, InputNumber, Space, Card, Tag, Typography, message } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
@@ -12,6 +12,8 @@ const CONDITION_TYPES = [
   { value: 'attr', label: '扩展属性 (attr)' },
 ];
 
+const MAX_CONDITIONS = 20;
+
 /**
  * 简化条件编辑器：编辑一个隐式 AND 数组
  * conditions: [{type, value}, ...]
@@ -19,6 +21,10 @@ const CONDITION_TYPES = [
  */
 function ConditionEditor({ conditions = [], onChange }) {
   const add = () => {
+    if (conditions.length >= MAX_CONDITIONS) {
+      message.warning(`最多添加 ${MAX_CONDITIONS} 个条件`);
+      return;
+    }
     onChange([...conditions, { type: 'user_list', value: [] }]);
   };
 
@@ -135,14 +141,19 @@ function ConditionValueEditor({ type, value, onChange }) {
     }
     case 'version': {
       const str = typeof value === 'string' ? value : '>=1.0.0';
+      const valid = /^[><=!]{0,2}\d+(\.\d+){0,2}(-[\w.]+)?$/.test(str);
       return (
-        <Input
-          size="small"
-          value={str}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="如 >=2.0.0"
-          style={{ width: 200 }}
-        />
+        <Space>
+          <Input
+            size="small"
+            value={str}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="如 >=2.0.0"
+            style={{ width: 200 }}
+            status={str && !valid ? 'warning' : undefined}
+          />
+          {str && !valid && <Text type="warning" style={{ fontSize: 11, color: '#faad14' }}>{'格式: >=1.0.0'}</Text>}
+        </Space>
       );
     }
     case 'platform': {

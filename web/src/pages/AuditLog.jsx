@@ -126,13 +126,17 @@ function AuditLogPage() {
       ellipsis: true,
       render: (detail) => {
         if (!detail) return <Text type="secondary">—</Text>;
+        const safeSlice = (s, n) => {
+          const arr = Array.from(s);
+          return arr.length > n ? arr.slice(0, n).join('') + '…' : s;
+        };
         try {
           const obj = JSON.parse(detail);
           // 展示关键字段
           const keys = Object.keys(obj).filter(k => !['id', 'created_at', 'updated_at', 'targeting_rules', 'features', 'environments'].includes(k));
           const summary = keys.slice(0, 4).map(k => {
             const v = obj[k];
-            const display = typeof v === 'object' ? JSON.stringify(v).substring(0, 30) : String(v).substring(0, 30);
+            const display = typeof v === 'object' ? safeSlice(JSON.stringify(v), 30) : safeSlice(String(v), 30);
             return `${k}: ${display}`;
           }).join(', ');
           return (
@@ -141,7 +145,7 @@ function AuditLogPage() {
             </Tooltip>
           );
         } catch {
-          return <Text type="secondary" style={{ fontSize: 12 }}>{detail.substring(0, 60)}</Text>;
+          return <Text type="secondary" style={{ fontSize: 12 }}>{safeSlice(detail, 60)}</Text>;
         }
       },
     },
