@@ -1,9 +1,20 @@
 package api
 
-import "github.com/gin-gonic/gin"
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+)
 
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
+	r.MaxMultipartMemory = 2 << 20 // 2 MB
+
+	// 请求体大小限制 1 MB
+	r.Use(func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
+		c.Next()
+	})
 
 	// 客户端接口
 	v1 := r.Group("/api/v1")

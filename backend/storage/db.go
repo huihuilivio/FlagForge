@@ -16,6 +16,18 @@ func InitDB(dbPath string) error {
 		return err
 	}
 
+	// 启用 WAL 模式（并发读写）和外键约束
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	if _, err := sqlDB.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		return err
+	}
+	if _, err := sqlDB.Exec("PRAGMA foreign_keys=ON"); err != nil {
+		return err
+	}
+
 	// 自动迁移建表
 	err = db.AutoMigrate(
 		&model.App{},

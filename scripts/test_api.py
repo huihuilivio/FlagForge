@@ -630,16 +630,16 @@ def main():
          params={"app_id": app_id},
          expect_status=400)
 
-    # ========== Eval: Non-existent app/env → 500 ==========
+    # ========== Eval: Non-existent app/env → 404 ==========
     print("\n--- Error Branches: Eval Errors ---")
 
-    test("Eval non-existent app → 500", "GET", "/api/v1/features",
+    test("Eval non-existent app → 404", "GET", "/api/v1/features",
          params={"app_key": "no_such_app", "env_key": "dev", "user_id": "alice"},
-         expect_status=500)
+         expect_status=404)
 
-    test("Eval non-existent env → 500", "GET", "/api/v1/features",
+    test("Eval non-existent env → 404", "GET", "/api/v1/features",
          params={"app_key": "test_app", "env_key": "no_such_env", "user_id": "alice"},
-         expect_status=500)
+         expect_status=404)
 
     # ========== Condition Engine: Advanced Coverage ==========
     print("\n--- Condition Engine: Advanced Coverage ---")
@@ -855,22 +855,16 @@ def main():
 
     test("Delete bad-op rule", "DELETE", f"/admin/rule/{rule_badop_id}")
 
-    # Malformed conditions JSON → matchRule returns false
-    rule_bad = test("Create Rule (malformed conditions)", "POST", "/admin/rule",
-                    json_body={
-                        "feature_id": feat2_id, "env_id": env_id,
-                        "name": "Bad JSON", "priority": 4, "active": True,
-                        "conditions": "{invalid json!!!",
-                        "enabled": True, "value": "Bad!"
-                    },
-                    expect_status=201)
-    rule_bad_id = rule_bad["id"] if rule_bad else 999
-
-    test("Eval malformed conditions → skip to baseline", "GET", "/api/v1/features",
-         params={"app_key": "test_app", "env_key": "dev", "user_id": "alice"},
-         expect_fn=lambda d: d["welcome_text"]["value"] != "Bad!")
-
-    test("Delete malformed rule", "DELETE", f"/admin/rule/{rule_bad_id}")
+    # Malformed conditions JSON → now rejected at write time
+    test("Create Rule (malformed conditions) → 400", "POST", "/admin/rule",
+         json_body={
+             "feature_id": feat2_id, "env_id": env_id,
+             "name": "Bad JSON", "priority": 4, "active": True,
+             "conditions": "{invalid json!!!",
+             "enabled": True, "value": "Bad!"
+         },
+         expect_status=400,
+         expect_fn=lambda d: "conditions" in d.get("error", ""))
 
     # parseConditions: "null" input → match all
     rule_null = test("Create Rule (null conditions)", "POST", "/admin/rule",

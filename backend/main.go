@@ -26,8 +26,13 @@ func main() {
 	r := api.SetupRouter()
 
 	srv := &http.Server{
-		Addr:    ":8080",
-		Handler: r,
+		Addr:              ":8080",
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1 MB
 	}
 
 	// 优雅关闭：收到信号后 graceful shutdown，确保 coverage 数据刷写

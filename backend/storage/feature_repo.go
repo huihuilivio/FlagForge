@@ -34,15 +34,18 @@ func (r *FeatureRepo) UpdateApp(app *model.App) error {
 
 func (r *FeatureRepo) DeleteApp(id uint) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
-		// 删除该 app 下 feature 关联的规则
-		tx.Where("feature_id IN (SELECT id FROM features WHERE app_id = ?)", id).Delete(&model.FeatureTargetingRule{})
-		// 删除该 app 下的 override
-		tx.Where("app_id = ?", id).Delete(&model.UserFeatureOverride{})
-		// 删除该 app 下的 feature
-		tx.Where("app_id = ?", id).Delete(&model.Feature{})
-		// 删除该 app 下的环境
-		tx.Where("app_id = ?", id).Delete(&model.Environment{})
-		// 删除 app 本身
+		if err := tx.Where("feature_id IN (SELECT id FROM features WHERE app_id = ?)", id).Delete(&model.FeatureTargetingRule{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("app_id = ?", id).Delete(&model.UserFeatureOverride{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("app_id = ?", id).Delete(&model.Feature{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("app_id = ?", id).Delete(&model.Environment{}).Error; err != nil {
+			return err
+		}
 		return tx.Delete(&model.App{}, id).Error
 	})
 }
@@ -81,11 +84,12 @@ func (r *FeatureRepo) UpdateEnv(env *model.Environment) error {
 
 func (r *FeatureRepo) DeleteEnv(id uint) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
-		// 删除该环境下的规则
-		tx.Where("env_id = ?", id).Delete(&model.FeatureTargetingRule{})
-		// 删除该环境下的 override
-		tx.Where("env_id = ?", id).Delete(&model.UserFeatureOverride{})
-		// 删除环境本身
+		if err := tx.Where("env_id = ?", id).Delete(&model.FeatureTargetingRule{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("env_id = ?", id).Delete(&model.UserFeatureOverride{}).Error; err != nil {
+			return err
+		}
 		return tx.Delete(&model.Environment{}, id).Error
 	})
 }
@@ -140,7 +144,15 @@ func (r *FeatureRepo) Update(feature *model.Feature) error {
 }
 
 func (r *FeatureRepo) Delete(id uint) error {
-	return DB.Delete(&model.Feature{}, id).Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("feature_id = ?", id).Delete(&model.FeatureTargetingRule{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("feature_id = ?", id).Delete(&model.UserFeatureOverride{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.Feature{}, id).Error
+	})
 }
 
 // ---- FeatureTargetingRule ----
@@ -198,7 +210,9 @@ func (r *FeatureRepo) ListAuditLogs(appID uint, targetType string, limit, offset
 	if targetType != "" {
 		q = q.Where("target_type = ?", targetType)
 	}
-	q.Count(&total)
+	if err := q.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 	if limit <= 0 {
 		limit = 50
 	}
@@ -224,7 +238,18 @@ func (r *FeatureRepo) UpsertOverride(o *model.UserFeatureOverride) error {
 		*o = existing
 		return DB.Save(&existing).Error
 	}
-	return DB.Create(o).Error
+	if err := DB.Create(o).Error; err != nil {
+		// 并发冲突：重试一次 upsert
+		if errR := DB.Where("app_id = ? AND env_id = ? AND feature_id = ? AND user_id = ?",
+			o.AppID, o.EnvID, o.FeatureID, o.UserID).First(&existing).Error; errR == nil {
+			existing.Enabled = o.Enabled
+			existing.Value = o.Value
+			*o = existing
+			return DB.Save(&existing).Error
+		}
+		return err
+	}
+	return nil
 }
 
 func (r *FeatureRepo) DeleteOverride(appID, envID, featureID uint, userID string) error {

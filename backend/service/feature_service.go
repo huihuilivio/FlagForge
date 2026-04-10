@@ -53,10 +53,11 @@ func (s *FeatureService) EvaluateFeatures(appKey, envKey string, ctx EvalContext
 	overrideMap := make(map[uint]model.UserFeatureOverride)
 	if ctx.UserID != "" {
 		overrides, err := s.Repo.FindOverridesByUser(app.ID, env.ID, ctx.UserID)
-		if err == nil {
-			for _, o := range overrides {
-				overrideMap[o.FeatureID] = o
-			}
+		if err != nil {
+			return nil, err
+		}
+		for _, o := range overrides {
+			overrideMap[o.FeatureID] = o
 		}
 	}
 
@@ -411,7 +412,7 @@ func matchPercentage(raw json.RawMessage, userID, featureKey string) bool {
 		Pct float64 `json:"pct"`
 		Key string  `json:"key"`
 	}
-	if err := json.Unmarshal(raw, &obj); err == nil && obj.Pct > 0 {
+	if err := json.Unmarshal(raw, &obj); err == nil && (obj.Pct > 0 || obj.Key != "") {
 		pct = obj.Pct
 		if obj.Key != "" {
 			rolloutKey = obj.Key
@@ -421,6 +422,14 @@ func matchPercentage(raw json.RawMessage, userID, featureKey string) bool {
 		if err := json.Unmarshal(raw, &pct); err != nil {
 			return false
 		}
+	}
+
+	// 限制范围 [0, 100]
+	if pct <= 0 {
+		return false
+	}
+	if pct >= 100 {
+		return true
 	}
 
 	h := fnv.New32a()

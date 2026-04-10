@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -10,6 +12,7 @@ import (
 	"goflagforge/service"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 const internalErr = "internal server error"
@@ -47,6 +50,10 @@ func GetFeatures(c *gin.Context) {
 	}
 	result, err := svc.EvaluateFeatures(appKey, envKey, ctx)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "app or env not found"})
+			return
+		}
 		logAndAbort(c, http.StatusInternalServerError, err, "EvaluateFeatures")
 		return
 	}
@@ -60,7 +67,11 @@ func GetFeatures(c *gin.Context) {
 func ListFeatures(c *gin.Context) {
 	var appID uint
 	if v := c.Query("app_id"); v != "" {
-		n, _ := strconv.ParseUint(v, 10, 64)
+		n, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid app_id"})
+			return
+		}
 		appID = uint(n)
 	}
 	features, err := svc.ListAll(appID)
@@ -99,11 +110,13 @@ func UpdateFeature(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "feature not found"})
 		return
 	}
+	origAppID := existing.AppID
 	if err := c.ShouldBindJSON(existing); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 	existing.ID = uint(id)
+	existing.AppID = origAppID
 	if err := svc.Update(existing); err != nil {
 		logAndAbort(c, http.StatusInternalServerError, err, "UpdateFeature")
 		return
@@ -167,11 +180,13 @@ func UpdateApp(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "app not found"})
 		return
 	}
+	origAppKey := existing.AppKey
 	if err := c.ShouldBindJSON(existing); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 	existing.ID = uint(id)
+	existing.AppKey = origAppKey
 	if err := svc.UpdateApp(existing); err != nil {
 		logAndAbort(c, http.StatusInternalServerError, err, "UpdateApp")
 		return
@@ -246,11 +261,13 @@ func UpdateEnv(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "env not found"})
 		return
 	}
+	origAppID := existing.AppID
 	if err := c.ShouldBindJSON(existing); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 	existing.ID = uint(id)
+	existing.AppID = origAppID
 	if err := svc.UpdateEnv(existing); err != nil {
 		logAndAbort(c, http.StatusInternalServerError, err, "UpdateEnv")
 		return
@@ -280,15 +297,27 @@ func DeleteEnv(c *gin.Context) {
 func ListRules(c *gin.Context) {
 	var appID, envID, featureID uint
 	if v := c.Query("app_id"); v != "" {
-		n, _ := strconv.ParseUint(v, 10, 64)
+		n, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid app_id"})
+			return
+		}
 		appID = uint(n)
 	}
 	if v := c.Query("env_id"); v != "" {
-		n, _ := strconv.ParseUint(v, 10, 64)
+		n, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid env_id"})
+			return
+		}
 		envID = uint(n)
 	}
 	if v := c.Query("feature_id"); v != "" {
-		n, _ := strconv.ParseUint(v, 10, 64)
+		n, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid feature_id"})
+			return
+		}
 		featureID = uint(n)
 	}
 	rules, err := svc.ListRules(appID, envID, featureID)
@@ -307,6 +336,10 @@ func CreateRule(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
+	if err := validateConditionsJSON(rule.Conditions); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid conditions: " + err.Error()})
+		return
+	}
 	if err := svc.CreateRule(&rule); err != nil {
 		logAndAbort(c, http.StatusInternalServerError, err, "CreateRule")
 		return
@@ -322,17 +355,25 @@ func UpdateRule(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
-	var rule model.FeatureTargetingRule
-	if err := c.ShouldBindJSON(&rule); err != nil {
+	existing, err := svc.FindRuleByID(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "rule not found"})
+		return
+	}
+	if err := c.ShouldBindJSON(existing); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
-	rule.ID = uint(id)
-	if err := svc.UpdateRule(&rule); err != nil {
+	existing.ID = uint(id)
+	if err := validateConditionsJSON(existing.Conditions); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid conditions: " + err.Error()})
+		return
+	}
+	if err := svc.UpdateRule(existing); err != nil {
 		logAndAbort(c, http.StatusInternalServerError, err, "UpdateRule")
 		return
 	}
-	c.JSON(http.StatusOK, rule)
+	c.JSON(http.StatusOK, existing)
 }
 
 // DeleteRule 删除定向规则
@@ -357,7 +398,11 @@ func DeleteRule(c *gin.Context) {
 func ListAuditLogs(c *gin.Context) {
 	var appID uint
 	if v := c.Query("app_id"); v != "" {
-		n, _ := strconv.ParseUint(v, 10, 64)
+		n, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid app_id"})
+			return
+		}
 		appID = uint(n)
 	}
 	targetType := c.Query("target_type")
@@ -393,6 +438,19 @@ func SetOverride(c *gin.Context) {
 	}
 	if o.UserID == "" || o.AppID == 0 || o.EnvID == 0 || o.FeatureID == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "app_id, env_id, feature_id and user_id are required"})
+		return
+	}
+	// 校验引用的 app、env、feature 存在
+	if _, err := svc.GetAppByID(o.AppID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "app not found"})
+		return
+	}
+	if _, err := svc.GetEnvByID(o.EnvID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "env not found"})
+		return
+	}
+	if _, err := svc.GetByID(o.FeatureID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "feature not found"})
 		return
 	}
 	if err := svc.UpsertOverride(&o); err != nil {
@@ -436,4 +494,21 @@ func ListOverrides(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, overrides)
+}
+
+// validateConditionsJSON 校验 conditions JSON 格式是否合法
+func validateConditionsJSON(raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || trimmed == "[]" || trimmed == "null" {
+		return nil // match all — valid
+	}
+	// 必须是合法 JSON
+	if !json.Valid([]byte(trimmed)) {
+		return errors.New("malformed JSON")
+	}
+	// 必须是数组或对象
+	if trimmed[0] != '[' && trimmed[0] != '{' {
+		return errors.New("must be array or object")
+	}
+	return nil
 }
